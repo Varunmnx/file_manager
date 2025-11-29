@@ -6,6 +6,7 @@ import ToggleMenu from "./components/Menu";
 import { Flex } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import ResourceUploadModal from "./components/Modal/ResourceUploadModal";
+import LiveFileUploadController from "./components/LiveFileUploadController";
 
 
 const Page = () => {
@@ -44,6 +45,7 @@ const Page = () => {
           <ResourceUploadModal opened={opened} close={close} />
         )
       }
+      <LiveFileUploadController />
       <div className="w-3/4 py-8">
         <Flex justify="space-between" align={"center"}>
            <h1 className="text-2xl font-bold">All Files</h1>
