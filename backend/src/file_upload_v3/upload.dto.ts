@@ -13,6 +13,18 @@ export class InitiateUploadDto {
   @IsOptional()
   @IsString()
   resourceType?: 'dir' | 'file';
+
+  @IsOptional()
+  @IsString()
+  parent?: string[];
+
+  @IsOptional()
+  @IsString()
+  children?: string[];
+
+  @IsOptional()
+  @IsString()
+  fileHash?: string;
 }
 
 export class UploadChunkDto {

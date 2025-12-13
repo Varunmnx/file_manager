@@ -6,6 +6,8 @@ const mutationKey = "useInitiateFileUpload"
 interface Body {
     fileName: string;
     fileSize: number;
+    parent?: string[];
+    children?: string[];
 }
 
 const useInitiateFileUpload = () => {

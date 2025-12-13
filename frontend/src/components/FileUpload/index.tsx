@@ -11,6 +11,7 @@ interface DropzoneProps {
   multiple?: boolean;
   onDrop?: (files: File[], tree: FileTreeItem[]) => void;
   className?: string;
+  onUpload?: (tree: FileTreeItem[]) => void
 }
 
 export default function Dropzone({ 
@@ -19,7 +20,8 @@ export default function Dropzone({
   maxFiles = 100,
   multiple = true,
   onDrop,
-  className = ''
+  className = '',
+  onUpload
 }: DropzoneProps) {
   const {
     fileTree,
@@ -121,6 +123,14 @@ export default function Dropzone({
             <h4 className="text-sm font-semibold text-gray-700">
               Uploaded Items ({fileTree.length})
             </h4>
+                        <button
+              onClick={()=>{
+                onUpload(fileTree);
+              }}
+              className="text-sm text-red-600 hover:text-red-800 font-medium"
+            >
+              Upload Files
+            </button>
             <button
               onClick={clearAll}
               className="text-sm text-red-600 hover:text-red-800 font-medium"

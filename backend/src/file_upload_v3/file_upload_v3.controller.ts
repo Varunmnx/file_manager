@@ -11,7 +11,7 @@ import {
   BadRequestException
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { UploadPoolService } from './v3.service';
+import { UploadPoolService } from './services/file_upload_v3.service';
 import { InitiateUploadDto, UploadChunkDto, CompleteUploadDto } from './upload.dto';
 import { Controller } from '@nestjs/common'; 
 import { FileSizeValidationPipe } from './validation';
@@ -21,14 +21,15 @@ export class UploadController {
   constructor(private readonly uploadPoolService: UploadPoolService) { }
   
   @Get("all")
-  getAll() { 
-    return this.uploadPoolService.getAllUploads();
+  async getAll() { 
+    const allSessions =  await this.uploadPoolService.getAllUploads();
+    return allSessions
   }
   @Post('initiate')
-  initiateUpload(@Body() dto: InitiateUploadDto) {
+  async initiateUpload(@Body() dto: InitiateUploadDto) {
     const chunkSize = 5 * 1024 * 1024; // 5mb
     const totalChunks = Math.ceil(dto.fileSize / chunkSize);
-    const uploadId = this.uploadPoolService.initiateUpload(dto.fileName, dto.fileSize, totalChunks, undefined, dto?.resourceType);
+    const uploadId = await this.uploadPoolService.initiateUpload(dto.fileName, dto.fileSize, totalChunks, dto?.parent, dto?.children, dto?.fileHash, dto?.resourceType);
     return { uploadId, totalChunks };
   }
 
@@ -51,8 +52,8 @@ export class UploadController {
   }
 
   @Get('status/:uploadId')
-  getUploadStatus(@Param('uploadId') uploadId: string) {
-    return this.uploadPoolService.getUploadStatus(uploadId);
+  async getUploadStatus(@Param('uploadId') uploadId: string) {
+    return await this.uploadPoolService.getUploadStatus(uploadId);
   }
 
   @Post('complete')
@@ -66,8 +67,8 @@ export class UploadController {
   }
 
   @Delete(':uploadId')
-  cancelUpload(@Param('uploadId') uploadId: string) {
-    this.uploadPoolService.cancelUpload(uploadId);
+  async cancelUpload(@Param('uploadId') uploadId: string) {
+    await this.uploadPoolService.cancelUpload(uploadId);
     return {
       success: true,
       message: 'Upload cancelled',

@@ -52,6 +52,20 @@ const DraggableBox = ({isMinimized, setIsMinimized, children, width}:Props) => {
     };
   }, [isDragging, dragOffset]);
 
+  useEffect(() => {
+    if (isMinimized) {
+      setPosition({
+        x: window.innerWidth - 520,
+        y: window.innerHeight - 80,
+      });
+    } else {
+      setPosition({
+        x: window.innerWidth - 520,
+        y: window.innerHeight - 260,
+      });
+    }
+  }, [isMinimized]);
+
   return (
     <Flex
       ref={widgetRef}

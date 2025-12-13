@@ -7,12 +7,14 @@ import { Flex } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import ResourceUploadModal from "./components/Modal/ResourceUploadModal";
 import LiveFileUploadController from "./components/LiveFileUploadController";
+import { useAppSelector } from "@/store";
 
 
 const Page = () => {
   const { data, isLoading } = useGetFiles();
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
-  const [opened, { open, close }] = useDisclosure(false);
+  const files = useAppSelector(state=>state.fileUpload.filesWaitingForUpload)
+  const [opened, { open, close }] = useDisclosure((files?.length > 0 ));
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       setSelectedFiles(new Set(data?.map((file: UploadedFile) => file.uploadId as string)));

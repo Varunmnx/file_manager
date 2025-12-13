@@ -1,6 +1,7 @@
+import { FileItem } from "@/components/FileUpload/types";
 import { createSlice } from "@reduxjs/toolkit";
 
-interface FileState {
+export interface FileState {
   type: 'file';
   name: string;
   file: File;
@@ -25,8 +26,11 @@ interface FileState {
     | "error";
 }
 
+export interface FilesWaitingForUpload extends FileState {
+      isPaused: boolean
+}
 interface FileUploadState {
-      filesWaitingForUpload: FileState[]
+      filesWaitingForUpload: FilesWaitingForUpload[]
       filesUploading: FileState[]
       filesUploaded: FileState[]
 }
@@ -37,11 +41,14 @@ const initialState: FileUploadState = {
   filesUploaded: [],
 };
 
+
+
+
 export const fileUploadSlice = createSlice({
   name: "fileUpload", // A unique identifier for the slice
   initialState,
   reducers: {
-    setFilesWaitingForUpload: (state, action: { payload: FileState[] }) => {
+    setFilesWaitingForUpload: (state, action: { payload: FilesWaitingForUpload[] }) => {
       state.filesWaitingForUpload = action.payload
     },
     setFilesUploading: (state, action: { payload: FileState[] }) => {
