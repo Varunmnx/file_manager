@@ -13,7 +13,7 @@ export class FileFolderRepository extends EntityRepository<UploadDocument> {
   }
 
   async findFolderByUploadId(uploadId: string): Promise<UploadDocument | null> {
-    return await this.entityModel.findOne({ uploadId: uploadId, isFolder: true });
+    return await this.entityModel.findOne({ uploadId: uploadId });
   }
 
   async update(id: Types.ObjectId | string, updatedUploadSessionStatus: Partial<UploadEntity>): Promise<UploadDocument | null> {

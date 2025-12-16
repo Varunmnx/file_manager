@@ -5,7 +5,7 @@ import { createWriteStream, existsSync, readFileSync, writeFileSync, unlinkSync,
 import { join } from 'path';
 import { v4 as uuid } from 'uuid';
 import { FileFolderRepository } from '../repositories/file-folder.repository';
-import { UploadEntity } from '../entities/upload-status.entity'; 
+import { UploadDocument, UploadEntity } from '../entities/upload-status.entity'; 
 import { toObjectId } from 'src/common/utils';
 
 export interface UploadSession {
@@ -76,7 +76,7 @@ export class UploadPoolService {
         let newUpload = await this.fileFolderRepository.create(uploadStatus.build())
 
         newUpload = await newUpload.save()
-
+        console.log("new upload", newUpload)
         return newUpload?.uploadId;
 
     }
@@ -103,10 +103,12 @@ export class UploadPoolService {
     }
 
     async getUploadStatus(uploadId: string) {
-        const uploadSession = await this.fileFolderRepository.findFolderByUploadId(uploadId)
+        let uploadSession = await this.fileFolderRepository.findFolderByUploadId(uploadId)
+        uploadSession = uploadSession?.toObject() as UploadDocument
         if(!uploadSession){
             throw new NotFoundException('Upload session not found');
         }
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
         return {
             ...uploadSession,
             progress: ((uploadSession?.uploadedChunks?.length ?? 0) / (uploadSession?.totalChunks ?? 0)) * 100,
