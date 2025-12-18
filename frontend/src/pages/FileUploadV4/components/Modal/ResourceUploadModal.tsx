@@ -1,9 +1,9 @@
 import Dropzone from '@/components/FileUpload';
-import { FileTreeItem, FolderItem, RootItem } from '@/components/FileUpload/types';
-import { useAppDispatch } from '@/store';
-import { FilesWaitingForUpload, setFilesWaitingForUpload } from '@/store/features/fileUpload/fileUploadSlice';
+import { FileTreeItem, FolderItem, RootItem } from '@/components/FileUpload/types'; 
 import { Modal } from '@mantine/core'
-import { useCallback } from 'react';
+import { useCallback } from 'react';  
+import { toast } from 'sonner';
+import { UploadQueueState, useChunkedUpload } from '../../context/chunked-upload.context';
 
 
 interface Props{
@@ -12,15 +12,20 @@ interface Props{
 }
 
 
-const ResourceUploadModal = ({opened,close}:Props) => {
-  const dispatch = useAppDispatch()
+const ResourceUploadModal = ({opened,close}:Props) => { 
+  const { startUploading, setUploadQueue } = useChunkedUpload()
+
   const onDropCallback = useCallback((files: File[], tree: FileTreeItem[]) => {
     console.log('Files dropped:', files);
     console.log('File tree:', tree);
   },[])
+ 
+  const runWhenAnyChunkFails = useCallback((error: string) => {
+    toast.error(error)
+  }, []);
 
   const onStartUpload = useCallback((tree: FileTreeItem[]) => {
-    let files : FilesWaitingForUpload [] = []
+    let files : UploadQueueState [] = []
     for(let i=0;i<tree.length;i++){
         const rootORFolder = tree[i] as RootItem | FolderItem
         if(rootORFolder.type === 'root'&& rootORFolder.children.length>0){
@@ -28,9 +33,10 @@ const ResourceUploadModal = ({opened,close}:Props) => {
           files = filesWithIsPaused
         }
     }
-    dispatch(setFilesWaitingForUpload(files))
+    setUploadQueue(files)
+    startUploading(files,runWhenAnyChunkFails)
     close()
-  }, [close, dispatch]);
+  }, [close, runWhenAnyChunkFails, setUploadQueue, startUploading]);
 
   return (
       <Modal size={"xl"} opened={opened} onClose={close} title="Upload Resource" centered>

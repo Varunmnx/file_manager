@@ -1,7 +1,7 @@
 /* eslint-disable prettier/prettier */
 // upload-pool.service.ts
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { createWriteStream, existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, rmSync } from 'fs';
+import { createWriteStream, existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, rmSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { v4 as uuid } from 'uuid';
 import { FileFolderRepository } from '../repositories/file-folder.repository';
@@ -77,6 +77,12 @@ export class UploadPoolService {
 
         newUpload = await newUpload.save()
         console.log("new upload", newUpload)
+
+         const uploadChunkDir = join(this.chunksDir, uploadId);
+            if (!existsSync(uploadChunkDir)) {
+              mkdirSync(uploadChunkDir, { recursive: true });
+            }
+        
         return newUpload?.uploadId;
 
     }

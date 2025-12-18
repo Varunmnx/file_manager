@@ -1,31 +1,31 @@
-import DraggableBox from "@/components/DraggableBox"
-import { useAppDispatch, useAppSelector } from "@/store"
-import { setFilesUploading } from "@/store/features/fileUpload/fileUploadSlice"
+import DraggableBox from "@/components/DraggableBox" 
 import { Flex, Text, Progress, ActionIcon, Stack, Group, Box } from "@mantine/core"
 import { IconMinus, IconX, IconPlayerPause, IconPlayerPlay, IconTrash } from "@tabler/icons-react"
 import { Activity, useState } from "react"
+import { useChunkedUpload } from "../../context/chunked-upload.context"
 
 const LiveFileUploadController = () => {
- const files = useAppSelector(state=>state.fileUpload.filesWaitingForUpload)
- const [isMinimized, setIsMinimized] = useState(false)
- const dispatch = useAppDispatch()
+ const {uploadQueue} = useChunkedUpload()
+ const [isMinimized, setIsMinimized] = useState(false) 
+ const {pauseUpload, cancelCurrentUpload} = useChunkedUpload()
+
   const handlePauseResume = (indexPosition: number) => {
-    const filesWithUpdatedStatus = files.map((file, idx) => idx === indexPosition ? {...file, isPaused: !file.isPaused} : file)
-    dispatch(setFilesUploading(filesWithUpdatedStatus))
+    pauseUpload(indexPosition)
   }
 
   const handleDelete = (indexPosition: number) => {
-    const filesWithoutDeleted = files.filter((_, idx) => idx !== indexPosition)
-    dispatch(setFilesUploading(filesWithoutDeleted))
+    cancelCurrentUpload(indexPosition)
   }
 
   const handleMinimize = () => {
     setIsMinimized(prev=>!prev)
   }
 
+  console.log("uploadQueue", uploadQueue)
+
   return (
     <DraggableBox width="500px" isMinimized={isMinimized} setIsMinimized={() => {}}>
-      <Flex p={20} direction="column" gap={16}>
+      <Flex p={20} direction="column" gap={16} style={{maxHeight:"400px",overflow:"scroll"}}>
         {/* Header */}
         <Flex direction="row" w="100%" justify="space-between" align="center">
           <Text fw={600} size="lg">Upload Manager</Text>
@@ -42,7 +42,7 @@ const LiveFileUploadController = () => {
         {/* Files with upload status */}
         <Activity mode={isMinimized ? "hidden" : "visible"}>
           <Stack gap={12}>
-            {files.map((file, idx) => (
+            {uploadQueue.map((file, idx) => (
               <Box key={`file-item-${idx}`}>
                 <Group justify="space-between" mb={8}>
                   <Text size="sm" fw={500} style={{ flex: 1 }} truncate>

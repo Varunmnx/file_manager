@@ -6,15 +6,15 @@ import ToggleMenu from "./components/Menu";
 import { Flex } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import ResourceUploadModal from "./components/Modal/ResourceUploadModal";
-import LiveFileUploadController from "./components/LiveFileUploadController";
-import { useAppSelector } from "@/store";
+import LiveFileUploadController from "./components/LiveFileUploadController"; 
+import { useChunkedUpload } from "./context/chunked-upload.context";
 
 
 const Page = () => {
   const { data, isLoading } = useGetFiles();
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
-  const files = useAppSelector(state=>state.fileUpload.filesWaitingForUpload)
-  const [opened, { open, close }] = useDisclosure((files?.length > 0 ));
+  const {uploadQueue} = useChunkedUpload();
+  const [opened, { open, close }] = useDisclosure((uploadQueue?.length > 0 ));
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       setSelectedFiles(new Set(data?.map((file: UploadedFile) => file.uploadId as string)));
@@ -41,22 +41,23 @@ const Page = () => {
   }
 
   return (
-    <div className="w-screen h-screen flex justify-center">
-      {
-        opened && (
-          <ResourceUploadModal opened={opened} close={close} />
-        )
-      }
-      <LiveFileUploadController />
-      <div className="w-3/4 py-8">
-        <Flex justify="space-between" align={"center"}>
-           <h1 className="text-2xl font-bold">All Files</h1>
-           <ToggleMenu onResourceUpload={open} />
-        </Flex>
-        <div className="mt-10" />
-        <FileFolderTable allSelected={allSelected} indeterminate={indeterminate} selectedFiles={selectedFiles} handleSelectAll={handleSelectAll} handleSelectFile={handleSelectFile} data={data ?? []} />
-      </div>
-    </div>
+     
+      <div className="w-screen h-screen flex justify-center">
+        {
+          opened && (
+            <ResourceUploadModal opened={opened} close={close} />
+          )
+        }
+        <LiveFileUploadController />
+        <div className="w-3/4 py-8">
+          <Flex justify="space-between" align={"center"}>
+            <h1 className="text-2xl font-bold">All Files</h1>
+            <ToggleMenu onResourceUpload={open} />
+          </Flex>
+          <div className="mt-10" />
+          <FileFolderTable allSelected={allSelected} indeterminate={indeterminate} selectedFiles={selectedFiles} handleSelectAll={handleSelectAll} handleSelectFile={handleSelectFile} data={data ?? []} />
+        </div>
+      </div> 
   );
 };
 

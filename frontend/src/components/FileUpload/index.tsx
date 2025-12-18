@@ -11,7 +11,7 @@ interface DropzoneProps {
   multiple?: boolean;
   onDrop?: (files: File[], tree: FileTreeItem[]) => void;
   className?: string;
-  onUpload?: (tree: FileTreeItem[]) => void
+  onUpload: (tree: FileTreeItem[]) => void
 }
 
 export default function Dropzone({ 

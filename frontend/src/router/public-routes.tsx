@@ -8,6 +8,7 @@ import FileUploadApp from "@/pages/FileUpload";
 import FixedChunkedUpload from "@/pages/FileUploadChunked";
 import FileUploadV3 from "@/pages/FileUploadChunkedV3";
 import FileUploadV4 from "@/pages/FileUploadV4";
+import { ChunkedUploadProvider } from "@/pages/FileUploadV4/context/chunked-upload.context";
 // import LandingPage from "@/pages/Landing";
 import { RouteObject, useRoutes } from "react-router-dom";
 
@@ -32,7 +33,7 @@ export const publicRoutes: RouteObject[] = [
     children: [
       {
         path: Path.ROOT,
-        element: <FileUploadV4 />,
+        element: <ChunkedUploadProvider><FileUploadV4 /></ChunkedUploadProvider>,
       },
       {
         path: Path.MIXED_UPLOAD,

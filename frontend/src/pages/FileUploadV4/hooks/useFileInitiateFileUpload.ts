@@ -10,10 +10,15 @@ interface Body {
     children?: string[];
 }
 
+export interface InitiateFileUploadResponse {
+  uploadId:string;
+  totalChunks: number
+}
+
 const useInitiateFileUpload = () => {
   return useApiMutateData({
     mutationFn: (body:Body) => {
-        return API.post({
+        return API.post<InitiateFileUploadResponse>({
             slug: Slug.INITIATE_FILE_UPLOAD,
             body 
         })
