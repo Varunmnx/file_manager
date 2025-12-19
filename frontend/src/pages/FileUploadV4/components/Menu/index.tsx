@@ -1,15 +1,17 @@
 import { Menu, Button } from '@mantine/core';
 import {
+  IconTrash,
   IconUpload
 } from '@tabler/icons-react';
 
 
 interface Props {
-  onResourceUpload: () => void
+  onResourceUpload: () => void;
+  deleteAllUploads: () => void
 }
 
 export default function ToggleMenu(props:Props) {
-  const { onResourceUpload } = props
+  const { onResourceUpload, deleteAllUploads } = props
 
   return (
     <Menu shadow="md" width={200}>
@@ -22,9 +24,10 @@ export default function ToggleMenu(props:Props) {
         <Menu.Item onClick={onResourceUpload} leftSection={<IconUpload size={14} />}>
           Upload 
         </Menu.Item>
-        {/* <Menu.Item leftSection={<IconMessageCircle size={14} />}>
-          Messages
+         <Menu.Item onClick={deleteAllUploads} leftSection={<IconTrash size={14} />}>
+          Delete All
         </Menu.Item>
+        {/*}
         <Menu.Item leftSection={<IconPhoto size={14} />}>
           Gallery
         </Menu.Item>

@@ -103,9 +103,13 @@ export class UploadPoolService {
         // // Save chunk to disk
         const chunkPath = join(this.chunksDir, uploadId, `chunk-${chunkIndex}`);
         writeFileSync(chunkPath, chunkBuffer);
-        const updatedUploadSession = uploadSession.toBuilder().setUploadedChunks([...uploadSession.uploadedChunks, chunkIndex]).setLastActivity(new Date()).build()
+        const newChunkList = [...uploadSession.uploadedChunks, chunkIndex]
+        const updatedUploadSession = uploadSession.toBuilder().setUploadedChunks(newChunkList).setLastActivity(new Date()).build()
 
         await this.fileFolderRepository.update(uploadSession._id, updatedUploadSession)
+        if(newChunkList?.length === uploadSession.totalChunks){
+            await this.completeUpload(uploadId)
+        }
     }
 
     async getUploadStatus(uploadId: string) {
@@ -164,6 +168,8 @@ export class UploadPoolService {
         }
 
         this.cleanupChunks(uploadId);
+
+        await this.fileFolderRepository.deleteOne(session._id)
     }
 
     private cleanupChunks(uploadId: string): void {
@@ -200,6 +206,25 @@ export class UploadPoolService {
 
     async getAllUploads() {
         const allUploadSessions = await this.fileFolderRepository.find({})
-        return allUploadSessions
+        return allUploadSessions?.filter((session) => session.uploadedChunks?.length === session.totalChunks)
+    }
+
+    async deleteAllUploadedFiles(uploadIds:string[]) {
+        await this.fileFolderRepository.deleteMany({
+            uploadId: { $in: uploadIds }
+        })
+        // remove every thing in chunks dir
+        const dir = join(this.chunksDir);
+        if (existsSync(dir)) {
+            rmSync(dir, { recursive: true, force: true });
+        }
+
+        if(existsSync(this.uploadDir)){
+            rmSync(this.uploadDir, { recursive: true, force: true });
+        }   
+        return {
+            success: true,
+            message: 'All uploads cancelled',
+        };
     }
 }

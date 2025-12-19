@@ -42,7 +42,7 @@ const LiveFileUploadController = () => {
         {/* Files with upload status */}
         <Activity mode={isMinimized ? "hidden" : "visible"}>
           <Stack gap={12}>
-            {uploadQueue.map((file, idx) => (
+            {uploadQueue?.filter((file) => (file.status !== "completed" && file.status !== "cancelled")).map((file, idx) => (
               <Box key={`file-item-${idx}`}>
                 <Group justify="space-between" mb={8}>
                   <Text size="sm" fw={500} style={{ flex: 1 }} truncate>

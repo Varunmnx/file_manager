@@ -416,6 +416,7 @@ export const FileTypeIconMap: { [key: string]: { extensions?: string[] } } = {
       'tif',
       'tiff',
       'wdp',
+      'webp',
     ],
   },
   photo360: {},

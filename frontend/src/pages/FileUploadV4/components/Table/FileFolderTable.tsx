@@ -14,6 +14,7 @@ interface Props {
   handleSelectAll: (checked: boolean) => void;
   handleSelectFile: (uploadId: string, checked: boolean) => void;
   data: UploadedFile[];
+  handleDeleteFile: (uploadId: string) => void;
 }
 const FileFolderTable = (props: Props) => {
   const {
@@ -22,6 +23,7 @@ const FileFolderTable = (props: Props) => {
     selectedFiles,
     handleSelectAll,
     handleSelectFile,
+    handleDeleteFile,
     data,
   } = props;
 
@@ -74,7 +76,7 @@ const FileFolderTable = (props: Props) => {
               {getShortDate(file?.createdAt as unknown as string)}
             </Table.Td>
             <Table.Td>
-              <ActionIcon variant="subtle" color="red">
+              <ActionIcon onClick={()=>handleDeleteFile(file.uploadId as string)} variant="subtle" color="red">
                 <img
                   src={TrashIcon}
                   alt="delete"

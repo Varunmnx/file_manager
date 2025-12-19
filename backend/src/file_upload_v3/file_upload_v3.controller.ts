@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UploadPoolService } from './services/file_upload_v3.service';
-import { InitiateUploadDto, UploadChunkDto, CompleteUploadDto } from './upload.dto';
+import { InitiateUploadDto, UploadChunkDto, CompleteUploadDto } from './dto/upload.dto';
 import { Controller } from '@nestjs/common'; 
 import { FileSizeValidationPipe } from './validation';
 
@@ -66,6 +66,17 @@ export class UploadController {
     };
   }
 
+    @Delete("all")
+  async deleteAllUploadedFiles(@Body() dto: {uploadIds:string[]}) {
+    if(!dto?.uploadIds) throw new BadRequestException('No upload ids provided');
+    if(dto?.uploadIds.length === 0) throw new BadRequestException('No upload ids provided');
+    await this.uploadPoolService.deleteAllUploadedFiles(dto.uploadIds);
+    return {
+      success: true,
+      message: 'All uploads cancelled',
+    };
+  }
+
   @Delete(':uploadId')
   async cancelUpload(@Param('uploadId') uploadId: string) {
     await this.uploadPoolService.cancelUpload(uploadId);
@@ -74,6 +85,8 @@ export class UploadController {
       message: 'Upload cancelled',
     };
   }
+
+
 
 
 }

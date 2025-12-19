@@ -7,6 +7,7 @@ export const checkAndRetrieveExtension = (fileName: string) => {
         return key;
       }
     });
+    if(!keyPairValues) return "";
     const [key] = keyPairValues as unknown as [string, { extensions: string[] }];
     if (!key) return "";
     return key;

@@ -5,18 +5,16 @@ import {
   useRef,
   ReactNode,
   useState,
-} from "react"; 
+} from "react";
 import useInitiateFileUpload from "../hooks/useFileInitiateFileUpload";
 import { FileItem } from "@/components/FileUpload/types";
 import { ChunkData } from "@/types/upload.types";
-import useFileUpload from "../hooks/useFileUpload"; 
 import { API, Slug } from "@/services"; 
-
-
-
+import useGetFiles from "../hooks/useGetFiles";
+import { UploadedFile } from "@/types/file.types";
 
 export interface UploadQueueState {
-  type: 'file';
+  type: "file";
   name: string;
   file: File;
   size: number;
@@ -37,21 +35,23 @@ export interface UploadQueueState {
     | "completed"
     | "paused"
     | "cancelled"
-    | "error"; 
+    | "error";
 }
 
 // Types
 interface ChunkedUploadContextValue {
   startUploading: (
     files: FileItem[],
-    runWhenAnyChunkFails?: (error: string) => void
+    runWhenAnyChunkFails?: (error: string) => void,
   ) => Promise<void>;
   cancelAllUploads: () => void;
   pauseUpload: (positionIndex: number) => void;
   cancelCurrentUpload: (positionIndex: number) => void;
   setUploadQueue: (uploadQueue: UploadQueueState[]) => void;
-  uploadQueue: UploadQueueState[]
-
+  uploadQueue: UploadQueueState[];
+  allFilesAndFolders: UploadedFile[];
+  isLoading: boolean;
+  refetchFilesAndFolders:()=>void
 }
 
 interface ChunkedUploadProviderProps {
@@ -61,19 +61,19 @@ interface ChunkedUploadProviderProps {
 
 // Create Context
 const ChunkedUploadContext = createContext<ChunkedUploadContextValue | null>(
-  null
+  null,
 );
 
 // Provider Component
 export function ChunkedUploadProvider({
   children,
   chunkSize = 5 * 1024 * 1024,
-}: ChunkedUploadProviderProps) { 
-  const initiateUpload = useInitiateFileUpload();
-  const fileUploadMutation = useFileUpload();
+}: ChunkedUploadProviderProps) {
+  const initiateUpload = useInitiateFileUpload(); 
   const uploadControllersRef = useRef<Map<number, AbortController>>(new Map());
   const isUploadingRef = useRef(false);
-  const [uploadQueue,setUploadQueue] = useState <UploadQueueState[]>([])
+  const [uploadQueue, setUploadQueue] = useState<UploadQueueState[]>([]);
+  const { data:allFilesAndFolders, isLoading, refetch:refetchFilesAndFolders } = useGetFiles();
 
   const splitFileIntoChunks = useCallback(
     (file: File): ChunkData[] => {
@@ -91,56 +91,45 @@ export function ChunkedUploadProvider({
       }
       return chunks;
     },
-    [chunkSize]
+    [chunkSize],
   );
 
   const startUploading = useCallback(
     async (
       files: FileItem[],
-      runWhenAnyChunkFails?: (error: string) => void
+      runWhenAnyChunkFails?: (error: string) => void,
     ) => {
-      /**
-       * initiate upload -
-       * perform chunking -
-       * attach abort controller -
-       * start uploading each chunk -
-       * update progress -
-       * finish upload when completed -
-       * ! await for each file to finish the entire step (sequential file upload)
-       */
       isUploadingRef.current = true;
       let fileIndex = 0;
-      
+
       for (const file of files) {
-        // Create a new abort controller for this file
         const controller = new AbortController();
         uploadControllersRef.current.set(fileIndex, controller);
 
-        const updatedUploadQueue: UploadQueueState[] = uploadQueue.map((upload) => {
-          if (upload.name === file.name) {
-            return {
-              ...upload,
-              status: "initiating",
-            };
-          }
-          return upload;
-        });
-        setUploadQueue(updatedUploadQueue)
+        // USE FUNCTIONAL UPDATE
+        setUploadQueue((prev) =>
+          prev.map((upload) => {
+            if (upload.name === file.name) {
+              return {
+                ...upload,
+                status: "initiating" as const,
+              };
+            }
+            return upload;
+          }),
+        );
 
         try {
-          // initiate
           const response = await initiateUpload.mutateAsync({
             fileName: file.name,
             fileSize: file.size,
           });
 
-          // perform chunking
           const chunks = splitFileIntoChunks(file?.file);
 
           if (response?.uploadId) {
             let chunkIndex = 0;
             for (const chunk of chunks) {
-              // Check if this file's upload was cancelled
               if (controller.signal.aborted) {
                 break;
               }
@@ -148,14 +137,11 @@ export function ChunkedUploadProvider({
               chunkIndex++;
               const formData = new FormData();
               formData.append("chunk", chunk.blob, file.name);
-              formData.append(
-                "uploadId",
-                response?.uploadId ?? "no-uuid"
-              );
+              formData.append("uploadId", response?.uploadId ?? "no-uuid");
               formData.append("chunkIndex", chunk.index.toString());
               formData.append("chunkSize", chunk.size.toString());
 
-              await API.post({
+              const res = await API.post({
                 slug: Slug.UPLOAD_CHUNK,
                 body: formData,
                 axiosConfig: {
@@ -163,42 +149,52 @@ export function ChunkedUploadProvider({
                 },
               });
 
-              if (fileUploadMutation.isError && runWhenAnyChunkFails) {
-                runWhenAnyChunkFails(fileUploadMutation.error.message);
+              console.log("res", res);
+
+              if (!res && runWhenAnyChunkFails) {
+                runWhenAnyChunkFails(
+                  `Failed to upload chunk ${chunkIndex} for file ${file.name}`,
+                );
                 break;
-              } else if (fileUploadMutation.isSuccess) {
-                const updatedUploadQueue: UploadQueueState[] = uploadQueue.map((upload) => {
-                  if (upload.name === file.name) {
-                    return {
-                      ...upload,
-                      status: "completed",
-                      percentage: chunkIndex / chunks.length * 100
-                    };
-                  }
-                  return upload;
-                })
-                setUploadQueue(updatedUploadQueue)
+              } else if (res) {
+                // USE FUNCTIONAL UPDATE
+                setUploadQueue((prev) =>
+                  prev.map((upload) => {
+                    if (upload.name === file.name) {
+                      return {
+                        ...upload,
+                        status:
+                          chunkIndex === chunks.length
+                            ? ("completed" as const)
+                            : ("uploading" as const),
+                        percentage: Math.round(
+                          (chunkIndex / chunks.length) * 100,
+                        ),
+                      };
+                    }
+                    return upload;
+                  }),
+                );
               }
             }
           }
+          refetchFilesAndFolders();
         } catch (error) {
-          if (error instanceof Error && error.name === 'AbortError') {
-            // Upload was cancelled
+          if (error instanceof Error && error.name === "AbortError") {
             console.log(`Upload cancelled for file at index ${fileIndex}`);
           } else {
             throw error;
           }
         } finally {
-          // Clean up the controller for this file
           uploadControllersRef.current.delete(fileIndex);
         }
 
         fileIndex++;
       }
-      
+
       isUploadingRef.current = false;
     },
-    [uploadQueue, initiateUpload, splitFileIntoChunks, fileUploadMutation.isError, fileUploadMutation.isSuccess, fileUploadMutation?.error?.message]
+    [initiateUpload, refetchFilesAndFolders, splitFileIntoChunks], // REMOVE uploadQueue from dependencies
   );
 
   const cancelAllUploads = useCallback(() => {
@@ -208,51 +204,54 @@ export function ChunkedUploadProvider({
     });
     uploadControllersRef.current.clear();
     isUploadingRef.current = false;
-    setUploadQueue([])
+    setUploadQueue([]);
+    refetchFilesAndFolders();
   }, []);
 
-
-  function cancelCurrentUpload(currentUploadIndexPosition:number){
-    const controller = uploadControllersRef.current.get(currentUploadIndexPosition);
+  function cancelCurrentUpload(currentUploadIndexPosition: number) {
+    const controller = uploadControllersRef.current.get(
+      currentUploadIndexPosition,
+    );
     if (controller) {
       controller.abort();
       uploadControllersRef.current.delete(currentUploadIndexPosition);
-      const updatedUploadQueue: UploadQueueState[] = uploadQueue.map((upload,idx) => {
-        if (idx === currentUploadIndexPosition) {
+
+      setUploadQueue((prev) =>
+        prev.map((upload, idx) => {
+          if (idx === currentUploadIndexPosition) {
+            return {
+              ...upload,
+              status: "cancelled" as const,
+            };
+          }
+          return upload;
+        }),
+      );
+    }
+    refetchFilesAndFolders();
+
+  }
+
+  const pauseUpload = useCallback((positionIndex: number) => {
+    const controller = uploadControllersRef.current.get(positionIndex);
+    if (controller) {
+      controller.abort();
+      uploadControllersRef.current.delete(positionIndex);
+    }
+
+    setUploadQueue((prev) =>
+      prev.map((upload, idx) => {
+        if (idx === positionIndex) {
           return {
             ...upload,
-            status: "cancelled",
+            status: "paused" as const,
+            isPaused: true,
           };
         }
         return upload;
-      })
-      setUploadQueue(updatedUploadQueue)
-    }
-  }
-
-  const pauseUpload = useCallback(
-    (positionIndex: number) => {
-      // Abort specific file upload
-      const controller = uploadControllersRef.current.get(positionIndex);
-      if (controller) {
-        controller.abort();
-        uploadControllersRef.current.delete(positionIndex);
-      }
-      
-     const updatedUploadQueue: UploadQueueState[] = uploadQueue.map((upload, idx) => {
-      if (idx === positionIndex) {
-        return {
-          ...upload,
-          status: "paused",
-        };
-      }
-      return upload;
-     })
-
-     setUploadQueue(updatedUploadQueue)
-    },
-    []
-  );
+      }),
+    );
+  }, []);
 
   const value: ChunkedUploadContextValue = {
     startUploading,
@@ -260,12 +259,13 @@ export function ChunkedUploadProvider({
     pauseUpload,
     cancelCurrentUpload,
     setUploadQueue,
-    uploadQueue
+    uploadQueue,
+    allFilesAndFolders: allFilesAndFolders ?? [],
+    isLoading,
+    refetchFilesAndFolders
   };
 
-  return (
-    <ChunkedUploadContext value={value}>{children}</ChunkedUploadContext>
-  );
+  return <ChunkedUploadContext value={value}>{children}</ChunkedUploadContext>;
 }
 
 // Custom Hook using React 19's `use` hook
@@ -273,7 +273,7 @@ export function useChunkedUpload() {
   const context = use(ChunkedUploadContext);
   if (!context) {
     throw new Error(
-      "useChunkedUpload must be used within a ChunkedUploadProvider"
+      "useChunkedUpload must be used within a ChunkedUploadProvider",
     );
   }
   return context;

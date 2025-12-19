@@ -1,5 +1,5 @@
 import Dropzone from '@/components/FileUpload';
-import { FileTreeItem, FolderItem, RootItem } from '@/components/FileUpload/types'; 
+import { FileItem, FileTreeItem, FolderItem, RootItem } from '@/components/FileUpload/types'; 
 import { Modal } from '@mantine/core'
 import { useCallback } from 'react';  
 import { toast } from 'sonner';
@@ -25,16 +25,18 @@ const ResourceUploadModal = ({opened,close}:Props) => {
   }, []);
 
   const onStartUpload = useCallback((tree: FileTreeItem[]) => {
-    let files : UploadQueueState [] = []
+    let uploadQueueState : UploadQueueState [] = []
+    let files:FileItem[] = []
     for(let i=0;i<tree.length;i++){
         const rootORFolder = tree[i] as RootItem | FolderItem
         if(rootORFolder.type === 'root'&& rootORFolder.children.length>0){
           const filesWithIsPaused = rootORFolder?.children?.map(item=>({...item,isPaused:false}))  
-          files = filesWithIsPaused
+          uploadQueueState = filesWithIsPaused
+          files = rootORFolder?.children
         }
     }
-    setUploadQueue(files)
-    startUploading(files,runWhenAnyChunkFails)
+    setUploadQueue(uploadQueueState)
+    setTimeout(()=>startUploading(files,runWhenAnyChunkFails),500)
     close()
   }, [close, runWhenAnyChunkFails, setUploadQueue, startUploading]);
 

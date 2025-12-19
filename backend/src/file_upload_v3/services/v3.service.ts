@@ -4,7 +4,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { v4 as uuid } from 'uuid';
-import { UploadSession } from './upload.dto';
+import { UploadSession } from '../dto/upload.dto';
 
 
 @Injectable()

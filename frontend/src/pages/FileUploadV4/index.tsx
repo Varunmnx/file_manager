@@ -1,26 +1,37 @@
-import { UploadedFile } from "@/types/file.types";
-import useGetFiles from "./hooks/useGetFiles";
-import { useState } from "react"; 
+import { UploadedFile } from "@/types/file.types"; 
+import { useState } from "react";
 import FileFolderTable from "./components/Table/FileFolderTable";
 import ToggleMenu from "./components/Menu";
 import { Flex } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import ResourceUploadModal from "./components/Modal/ResourceUploadModal";
-import LiveFileUploadController from "./components/LiveFileUploadController"; 
+import LiveFileUploadController from "./components/LiveFileUploadController";
 import { useChunkedUpload } from "./context/chunked-upload.context";
-
+import useDeleteAll from "./hooks/useDeleteAll"; 
 
 const Page = () => {
-  const { data, isLoading } = useGetFiles();
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
-  const {uploadQueue} = useChunkedUpload();
-  const [opened, { open, close }] = useDisclosure((uploadQueue?.length > 0 ));
+  const { uploadQueue,allFilesAndFolders:data,refetchFilesAndFolders:refetch, isLoading } = useChunkedUpload();
+  const [opened, { open, close }] = useDisclosure(uploadQueue?.length > 0);
+  const deleteAllMutation = useDeleteAll();
+
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedFiles(new Set(data?.map((file: UploadedFile) => file.uploadId as string)));
+      setSelectedFiles(
+        new Set(data?.map((file: UploadedFile) => file.uploadId as string)),
+      );
     } else {
       setSelectedFiles(new Set());
     }
+  };
+
+  const deleteAllUploads = () => {
+    console.log(selectedFiles);
+    deleteAllMutation.mutateAsync({uploadIds: Array.from(selectedFiles)}).then(() => refetch());
+  };
+
+  const handleDeleteFile = (uploadId: string) => {
+    deleteAllMutation.mutateAsync({uploadIds: [uploadId]}).then(() => refetch());
   };
 
   const handleSelectFile = (uploadId: string, checked: boolean) => {
@@ -33,31 +44,39 @@ const Page = () => {
     setSelectedFiles(newSelected);
   };
 
-  const allSelected = (data?.length ?? 0) > 0 && selectedFiles.size === data?.length;
-  const indeterminate = selectedFiles.size > 0 && selectedFiles.size < (data?.length || 0);
-  
-  if(isLoading) {
-    return <div>Loading...</div>
+  const allSelected =
+    (data?.length ?? 0) > 0 && selectedFiles.size === data?.length;
+  const indeterminate =
+    selectedFiles.size > 0 && selectedFiles.size < (data?.length || 0);
+
+  if (isLoading) {
+    return <div>Loading...</div>;
   }
 
   return (
-     
-      <div className="w-screen h-screen flex justify-center">
-        {
-          opened && (
-            <ResourceUploadModal opened={opened} close={close} />
-          )
-        }
-        <LiveFileUploadController />
-        <div className="w-3/4 py-8">
-          <Flex justify="space-between" align={"center"}>
-            <h1 className="text-2xl font-bold">All Files</h1>
-            <ToggleMenu onResourceUpload={open} />
-          </Flex>
-          <div className="mt-10" />
-          <FileFolderTable allSelected={allSelected} indeterminate={indeterminate} selectedFiles={selectedFiles} handleSelectAll={handleSelectAll} handleSelectFile={handleSelectFile} data={data ?? []} />
-        </div>
-      </div> 
+    <div className="w-screen h-screen flex justify-center">
+      {opened && <ResourceUploadModal opened={opened} close={close} />}
+      <LiveFileUploadController />
+      <div className="w-3/4 py-8">
+        <Flex justify="space-between" align={"center"}>
+          <h1 className="text-2xl font-bold">All Files</h1>
+          <ToggleMenu
+            deleteAllUploads={deleteAllUploads}
+            onResourceUpload={open}
+          />
+        </Flex>
+        <div className="mt-10" />
+        <FileFolderTable
+          allSelected={allSelected}
+          indeterminate={indeterminate}
+          selectedFiles={selectedFiles}
+          handleSelectAll={handleSelectAll}
+          handleSelectFile={handleSelectFile}
+          handleDeleteFile={handleDeleteFile}
+          data={data ?? []}
+        />
+      </div>
+    </div>
   );
 };
 
