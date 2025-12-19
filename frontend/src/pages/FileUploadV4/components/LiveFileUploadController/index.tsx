@@ -2,15 +2,15 @@ import DraggableBox from "@/components/DraggableBox"
 import { Flex, Text, Progress, ActionIcon, Stack, Group, Box } from "@mantine/core"
 import { IconMinus, IconX, IconPlayerPause, IconPlayerPlay, IconTrash } from "@tabler/icons-react"
 import { Activity, useState } from "react"
-import { useChunkedUpload } from "../../context/chunked-upload.context"
+import { UploadQueueState, useChunkedUpload } from "../../context/chunked-upload.context"
 
 const LiveFileUploadController = () => {
  const {uploadQueue} = useChunkedUpload()
  const [isMinimized, setIsMinimized] = useState(false) 
  const {pauseUpload, cancelCurrentUpload} = useChunkedUpload()
 
-  const handlePauseResume = (indexPosition: number) => {
-    pauseUpload(indexPosition)
+  const handlePauseResume = (indexPosition: number,uploadQueueItem:UploadQueueState) => {
+    pauseUpload(indexPosition,uploadQueueItem)
   }
 
   const handleDelete = (indexPosition: number) => {
@@ -53,7 +53,7 @@ const LiveFileUploadController = () => {
                       variant="subtle"
                       color={file.isPaused ? "blue" : "yellow"}
                       size="sm"
-                      onClick={() => handlePauseResume(idx)}
+                      onClick={() => handlePauseResume(idx,file)}
                     >
                       {file.isPaused ? <IconPlayerPlay size={16} /> : <IconPlayerPause size={16} />}
                     </ActionIcon>

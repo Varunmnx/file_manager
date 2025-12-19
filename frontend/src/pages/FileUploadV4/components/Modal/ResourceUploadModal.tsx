@@ -43,7 +43,7 @@ const ResourceUploadModal = ({opened,close}:Props) => {
   return (
       <Modal size={"xl"} opened={opened} onClose={close} title="Upload Resource" centered>
         {/* Modal content */}
-        <Dropzone maxFiles={100} maxSize={100 * 1024 * 1024} onUpload={onStartUpload} onDrop={onDropCallback} />
+        <Dropzone maxFiles={100} maxSize={1000 * 1024 * 1024} onUpload={onStartUpload} onDrop={onDropCallback} />
       </Modal>
 
   )
