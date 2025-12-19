@@ -9,8 +9,9 @@ const LiveFileUploadController = () => {
  const [isMinimized, setIsMinimized] = useState(false) 
  const {pauseUpload, cancelCurrentUpload} = useChunkedUpload()
 
-  const handlePauseResume = (indexPosition: number,uploadQueueItem:UploadQueueState) => {
-    pauseUpload(indexPosition,uploadQueueItem)
+  const handlePauseResume = (indexPosition: number,uploadQueueItem:UploadQueueState, uploadId?:string) => {
+    console.log(uploadId)
+    pauseUpload(indexPosition,uploadQueueItem,uploadId)
   }
 
   const handleDelete = (indexPosition: number) => {
@@ -53,7 +54,7 @@ const LiveFileUploadController = () => {
                       variant="subtle"
                       color={file.isPaused ? "blue" : "yellow"}
                       size="sm"
-                      onClick={() => handlePauseResume(idx,file)}
+                      onClick={() => handlePauseResume(idx,file, file?.uploadId as string)}
                     >
                       {file.isPaused ? <IconPlayerPlay size={16} /> : <IconPlayerPause size={16} />}
                     </ActionIcon>
