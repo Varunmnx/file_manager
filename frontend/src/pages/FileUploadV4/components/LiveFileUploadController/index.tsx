@@ -14,8 +14,8 @@ const LiveFileUploadController = () => {
     pauseUpload(indexPosition,uploadQueueItem,uploadId)
   }
 
-  const handleDelete = (indexPosition: number) => {
-    cancelCurrentUpload(indexPosition)
+  const handleDelete = (indexPosition: number, uploadId:string) => {
+    cancelCurrentUpload(indexPosition,uploadId)
   }
 
   const handleMinimize = () => {
@@ -62,7 +62,7 @@ const LiveFileUploadController = () => {
                       variant="subtle"
                       color="red"
                       size="sm"
-                      onClick={() => handleDelete(idx)}
+                      onClick={() => handleDelete(idx,file?.uploadId as string)}
                     >
                       <IconTrash size={16} />
                     </ActionIcon>

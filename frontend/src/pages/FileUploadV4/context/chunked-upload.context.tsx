@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 import {
   createContext,
   use,
@@ -5,6 +6,7 @@ import {
   useRef,
   ReactNode,
   useState,
+  useEffect,
 } from "react";
 import useInitiateFileUpload from "../hooks/useFileInitiateFileUpload";
 import { FileItem } from "@/components/FileUpload/types";
@@ -13,6 +15,9 @@ import { API, Slug } from "@/services";
 import useGetFiles from "../hooks/useGetFiles";
 import { UploadedFile } from "@/types/file.types";
 import useFileGetStatus from "../hooks/useFileGetStatus";
+import { useParams } from "react-router-dom";
+import usePauseUpload from "../hooks/usePauseUpload";
+import useDeleteAll from "../hooks/useDeleteAll";
 
 export interface UploadQueueState {
   type: "file";
@@ -44,6 +49,7 @@ interface ChunkedUploadContextValue {
   startUploading: (
     files: FileItem[],
     runWhenAnyChunkFails?: (error: string) => void,
+    parents?: string[],
   ) => Promise<void>;
   cancelAllUploads: () => void;
   pauseUpload: (
@@ -51,7 +57,7 @@ interface ChunkedUploadContextValue {
     uploadQueueItem: UploadQueueState,
     uploadId?: string,
   ) => void;
-  cancelCurrentUpload: (positionIndex: number) => void;
+  cancelCurrentUpload: (positionIndex: number, uploadId:string) => void;
   setUploadQueue: (uploadQueue: UploadQueueState[]) => void;
   uploadQueue: UploadQueueState[];
   allFilesAndFolders: UploadedFile[];
@@ -74,6 +80,7 @@ export function ChunkedUploadProvider({
 }: ChunkedUploadProviderProps) {
   const initiateUpload = useInitiateFileUpload();
   const getFileUploadState = useFileGetStatus();
+  const {folderId} = useParams()  
   const uploadControllersRef = useRef<Map<number, AbortController>>(new Map());
   const isUploadingRef = useRef(false);
   const [uploadQueue, setUploadQueue] = useState<UploadQueueState[]>([]);
@@ -81,7 +88,15 @@ export function ChunkedUploadProvider({
     data: allFilesAndFolders,
     isLoading,
     refetch: refetchFilesAndFolders,
-  } = useGetFiles();
+  } = useGetFiles(folderId);
+  const pauseUploadMutation = usePauseUpload()
+  const deleteFileFolderMutation = useDeleteAll()
+
+
+
+  useEffect(() => {
+    refetchFilesAndFolders();
+  }, [folderId]);
 
   const splitFileIntoChunks = useCallback(
     (file: File): ChunkData[] => {
@@ -123,6 +138,7 @@ export function ChunkedUploadProvider({
     async (
       files: FileItem[],
       runWhenAnyChunkFails?: (error: string) => void,
+      parents?: string[],
     ) => {
       isUploadingRef.current = true;
       let fileIndex = 0;
@@ -149,6 +165,7 @@ export function ChunkedUploadProvider({
           const response = await initiateUpload.mutateAsync({
             fileName: file.name,
             fileSize: file.size,
+            parent: parents
           });
 
           setUploadQueue((prev) => {
@@ -356,7 +373,7 @@ export function ChunkedUploadProvider({
     refetchFilesAndFolders();
   }, [refetchFilesAndFolders]);
 
-  function cancelCurrentUpload(currentUploadIndexPosition: number) {
+  function cancelCurrentUpload(currentUploadIndexPosition: number, uploadId: string) {
     console.log("cancelling")
     console.log(uploadControllersRef)
     const controller = uploadControllersRef.current.get(
@@ -368,19 +385,25 @@ export function ChunkedUploadProvider({
       controller.abort();
       uploadControllersRef.current.delete(currentUploadIndexPosition);
 
-      setUploadQueue((prev) =>
-        prev.map((upload, idx) => {
-          if (idx === currentUploadIndexPosition) {
-            return {
-              ...upload,
-              status: "cancelled" as const,
-            };
-          }
-          return upload;
-        }),
-      );
     }
-    refetchFilesAndFolders();
+    setUploadQueue((prev) =>
+      prev.map((upload) => {
+        if (upload.uploadId == uploadId) {
+          return {
+            ...upload,
+            status: "cancelled" as const,
+          };
+        }
+        return upload;
+      }),
+    );
+
+    deleteFileFolderMutation.mutate({uploadIds:[uploadId]},{
+      onSuccess: () => {
+        console.log("deleted")
+        refetchFilesAndFolders();
+      }
+    });
   }
 
   async function resumeUpload(
@@ -397,7 +420,7 @@ export function ChunkedUploadProvider({
     }
     
     let completedChunks = lastChunk  
-    for (let i = lastChunk + 1; i < chunks.length; i++) {
+    for (let i = lastChunk ; i < chunks.length; i++) {
       const chunk = chunks[i];
       const controller = new AbortController();
       uploadControllersRef.current.set(i, controller);
@@ -527,7 +550,7 @@ export function ChunkedUploadProvider({
   }
 
   const pauseUpload = useCallback(
-    (
+   async (
       positionIndex: number,
       uploadQueueItem: UploadQueueState,
       uploadId?: string,
@@ -538,12 +561,15 @@ export function ChunkedUploadProvider({
         uploadControllersRef.current.delete(positionIndex);
       }
 
+      const response = await getFileUploadState.mutateAsync(uploadId as string);
+
       setUploadQueue((prev) =>
         prev.map((upload, idx) => {
           if (idx === positionIndex) {
             if (upload.isPaused && uploadId) {
               resumeUpload(uploadQueueItem, uploadId);
             }
+            pauseUploadMutation.mutate({uploadId:uploadId as string, chunkIndex:response?.uploadedChunks[response?.uploadedChunks.length - 1] ?? 0});
             return {
               ...upload,
               status: upload.isPaused ? "uploading" : ("paused" as const),

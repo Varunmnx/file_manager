@@ -8,29 +8,41 @@ import {
   Param,
   UploadedFile,
   UseInterceptors,
-  BadRequestException
+  BadRequestException,
+  Query,
+  Put
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UploadPoolService } from './services/file_upload_v3.service';
 import { InitiateUploadDto, UploadChunkDto, CompleteUploadDto } from './dto/upload.dto';
 import { Controller } from '@nestjs/common'; 
 import { FileSizeValidationPipe } from './validation';
+import { CreateFolderDto } from './dto/create-folder.dto';
 
 @Controller('upload')
 export class UploadController {
   constructor(private readonly uploadPoolService: UploadPoolService) { }
   
   @Get("all")
-  async getAll() { 
+  async getAll(@Query("folderId") folderId: string) { 
+    if(folderId) return await this.uploadPoolService.getAllUploadsUnderFolder(folderId)
     const allSessions =  await this.uploadPoolService.getAllUploads();
     return allSessions
   }
+
   @Post('initiate')
   async initiateUpload(@Body() dto: InitiateUploadDto) {
     const chunkSize = 5 * 1024 * 1024; // 5mb
     const totalChunks = Math.ceil(dto.fileSize / chunkSize);
     const uploadId = await this.uploadPoolService.initiateUpload(dto.fileName, dto.fileSize, totalChunks, dto?.parent, dto?.children, dto?.fileHash, dto?.resourceType);
     return { uploadId, totalChunks };
+  }
+
+
+  @Post('folder')
+  async createFolder(@Body() dto: CreateFolderDto) {
+    const uploadId = await this.uploadPoolService.createNewFolder(dto.folderName, dto.parent);
+    return { uploadId };
   }
 
   @Post('chunk')
@@ -49,6 +61,11 @@ export class UploadController {
       success: true,
       message: `Chunk ${dto.chunkIndex} uploaded successfully`,
     };
+  }
+
+  @Put('pause/:uploadId')
+  async pauseCurrentChunkUpload(@Param('uploadId') uploadId: string,@Query("chunkIndex") chunkIndex: number) {
+    return await this.uploadPoolService.pauseCurrentChunkUpload(uploadId, chunkIndex);
   }
 
   @Get('status/:uploadId')

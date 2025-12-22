@@ -36,17 +36,10 @@ export const publicRoutes: RouteObject[] = [
         element: <ChunkedUploadProvider><FileUploadV4 /></ChunkedUploadProvider>,
       },
       {
-        path: Path.MIXED_UPLOAD,
-        element: <FileUploadApp />,
-      },
-      {
-        path: Path.CHUNKED,
-        element: <FixedChunkedUpload />,
-      },
-      {
-        path: Path.ChunkedV2,
-        element: <ChunkedUploader />,
-      },
+        path: Path.ROOT + '/:folderId',
+        element: <ChunkedUploadProvider><FileUploadV4 /></ChunkedUploadProvider>,
+
+      }
     ],
   },
 ];

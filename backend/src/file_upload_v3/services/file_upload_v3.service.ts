@@ -87,6 +87,10 @@ export class UploadPoolService {
 
     }
 
+    async createNewFolder(folderName:string, parentId?: string, folderSize?: number): Promise<UploadDocument> { 
+        return await this.fileFolderRepository.createFolder(folderName, parentId, folderSize)
+    }
+
     // eslint-disable-next-line @typescript-eslint/require-await
     async uploadChunk(uploadId: string, chunkIndex: number, chunkBuffer: Buffer): Promise<void> {
 
@@ -100,6 +104,8 @@ export class UploadPoolService {
             throw new BadRequestException('Invalid chunk index');
         }
 
+        console.log("uploadSession",uploadSession)
+
         // // Save chunk to disk
         const chunkPath = join(this.chunksDir, uploadId, `chunk-${chunkIndex}`);
         writeFileSync(chunkPath, chunkBuffer);
@@ -107,7 +113,10 @@ export class UploadPoolService {
         const updatedUploadSession = uploadSession.toBuilder().setUploadedChunks(newChunkList).setLastActivity(new Date()).build()
 
         await this.fileFolderRepository.update(uploadSession._id, updatedUploadSession)
-        if(newChunkList?.length === uploadSession.totalChunks){
+        if(newChunkList?.length == uploadSession.totalChunks){
+            console.log("uploadedChunks list",newChunkList?.length)
+            console.log("totalChunks",uploadSession.totalChunks)
+           
             await this.completeUpload(uploadId)
         }
     }
@@ -135,7 +144,7 @@ export class UploadPoolService {
         if (session.uploadedChunks?.length !== session.totalChunks) {
             throw new BadRequestException('Not all chunks uploaded');
         }
-
+        console.log("Session",session)
         // Merge chunks
         const finalFilePath = join(this.uploadDir, session.fileName);
         const writeStream = createWriteStream(finalFilePath);
@@ -168,7 +177,9 @@ export class UploadPoolService {
         }
 
         this.cleanupChunks(uploadId);
-
+        await this.fileFolderRepository.deleteMany({
+            parents: session._id
+        })
         await this.fileFolderRepository.deleteOne(session._id)
     }
 
@@ -206,6 +217,11 @@ export class UploadPoolService {
 
     async getAllUploads() {
         const allUploadSessions = await this.fileFolderRepository.find({})
+        return allUploadSessions?.filter((session) => session.uploadedChunks?.length === session.totalChunks && session.parents.length === 0)
+    }
+
+    async getAllUploadsUnderFolder(parentId: string){
+        const allUploadSessions = await this.fileFolderRepository.find({parents:parentId})
         return allUploadSessions?.filter((session) => session.uploadedChunks?.length === session.totalChunks)
     }
 
@@ -225,6 +241,32 @@ export class UploadPoolService {
         return {
             success: true,
             message: 'All uploads cancelled',
+        };
+    }
+
+    async pauseCurrentChunkUpload(uploadId: string, currentChunk:number) {
+        const session = await this.fileFolderRepository.findFolderByUploadId(uploadId)
+        if (!session) {
+            throw new NotFoundException('Upload session not found');
+        }
+
+        // delete the chunk fi exists 
+        const chunkPath = join(this.chunksDir, uploadId, `chunk-${currentChunk}`);
+        if(existsSync(chunkPath)){
+            unlinkSync(chunkPath);
+        }
+        let sessionBuilder = session.toBuilder()
+        // check if provided chunk is updated in db 
+        if(session.uploadedChunks?.includes(currentChunk)){
+            // remove duplicate chunk index
+            const unique = session.uploadedChunks.filter((item, index) => session.uploadedChunks.indexOf(item) === index);
+            sessionBuilder = sessionBuilder.setUploadedChunks(unique)
+        }
+        
+        await this.fileFolderRepository.update(session._id,sessionBuilder.build())
+        return {
+            success: true,
+            message: 'Upload paused successfully',
         };
     }
 }

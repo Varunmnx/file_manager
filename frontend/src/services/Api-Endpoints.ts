@@ -9,5 +9,7 @@ export enum Slug {
   COMPLETE_UPLOAD = "/upload/complete",
   FILE_STATUS = "/upload/status",
   INITIATE_FILE_UPLOAD = "/upload/initiate",
-  GET_ALL_FILES = "/upload/all", 
+  GET_ALL_FILES = "/upload/all",
+  CREATE_FOLDER = "/upload/folder", 
+  PAUSE_UPLOAD  = "/upload/pause"
 }

@@ -5,6 +5,7 @@ import { FileTypeIconMapKeys } from "@/utils/fileTypeIcons";
 import { checkAndRetrieveExtension } from "../../utils/getFileIcon";
 import { formatBytes } from "@/utils/formatBytes";
 import { getShortDate } from "@/utils/getDateTime";
+import { IconFolder } from "@tabler/icons-react";
 const TrashIcon = "https://www.svgrepo.com/show/533014/trash-blank.svg";
 
 interface Props {
@@ -15,6 +16,7 @@ interface Props {
   handleSelectFile: (uploadId: string, checked: boolean) => void;
   data: UploadedFile[];
   handleDeleteFile: (uploadId: string) => void;
+  onFileFolderRowClick?: (entityId: string,isDirectory: boolean) => void;
 }
 const FileFolderTable = (props: Props) => {
   const {
@@ -25,6 +27,7 @@ const FileFolderTable = (props: Props) => {
     handleSelectFile,
     handleDeleteFile,
     data,
+    onFileFolderRowClick
   } = props;
 
   return (
@@ -47,7 +50,7 @@ const FileFolderTable = (props: Props) => {
       </Table.Thead>
       <Table.Tbody>
         {data?.map((file: UploadedFile) => (
-          <Table.Tr key={file?.uploadId as string}>
+          <Table.Tr onClick={() => onFileFolderRowClick?.(file._id as string, !!file?.isFolder)} key={file?.uploadId as string}>
             <Table.Td>
               <Checkbox
                 checked={selectedFiles.has(file.uploadId as string)}
@@ -60,15 +63,23 @@ const FileFolderTable = (props: Props) => {
               />
             </Table.Td>
             <Table.Td>
-              <Icon
-                iconSize={24}
-                scaleFactor="_1.5x"
-                extension={
-                  checkAndRetrieveExtension(
-                    file.fileName,
-                  ) as FileTypeIconMapKeys
-                }
-              />
+              {
+                file.isFolder ? (
+                  <IconFolder
+                    size={24} 
+                  />
+                ) : (
+                  <Icon
+                    iconSize={24}
+                    scaleFactor="_1.5x"
+                    extension={
+                      checkAndRetrieveExtension(
+                        file.fileName,
+                      ) as FileTypeIconMapKeys
+                    }
+                  />
+                )
+              } 
             </Table.Td>
             <Table.Td>{file.fileName}</Table.Td>
             <Table.Td>{formatBytes(file.fileSize)}</Table.Td>

@@ -4,11 +4,9 @@ import { API, Slug } from "@/services";
 const mutationKey = "useInitiateFileUpload";
 
 interface Body {
-  fileName: string;
-  fileSize: number;
-  resourceType?: "dir" | "file";
-  parent?: string[];
-  children?: string[];
+  folderName: string;
+  folderSize: number; 
+  parent?: string
 }
 
 export interface InitiateFileUploadResponse {
@@ -16,11 +14,11 @@ export interface InitiateFileUploadResponse {
   totalChunks: number;
 }
 
-const useInitiateFileUpload = () => {
+const useCreateFolder = () => {
   return useApiMutateData({
     mutationFn: (body: Body) => {
       return API.post<InitiateFileUploadResponse>({
-        slug: Slug.INITIATE_FILE_UPLOAD,
+        slug: Slug.CREATE_FOLDER,
         body,
       });
     },
@@ -28,4 +26,4 @@ const useInitiateFileUpload = () => {
   });
 };
 
-export default useInitiateFileUpload;
+export default useCreateFolder;

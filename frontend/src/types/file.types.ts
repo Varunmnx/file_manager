@@ -8,4 +8,6 @@ export interface UploadedFile  {
   createdAt: Date;
   lastActivity: Date;
   fileHash?: string;
+  isFolder?: boolean;
+  _id?: string
 }

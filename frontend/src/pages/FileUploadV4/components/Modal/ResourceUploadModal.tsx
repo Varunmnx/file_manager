@@ -4,6 +4,7 @@ import { Modal } from '@mantine/core'
 import { useCallback } from 'react';  
 import { toast } from 'sonner';
 import { UploadQueueState, useChunkedUpload } from '../../context/chunked-upload.context';
+import { useParams } from 'react-router-dom';
 
 
 interface Props{
@@ -14,6 +15,8 @@ interface Props{
 
 const ResourceUploadModal = ({opened,close}:Props) => { 
   const { startUploading, setUploadQueue } = useChunkedUpload()
+  const params = useParams()
+  const folderId = params?.folderId
 
   const onDropCallback = useCallback((files: File[], tree: FileTreeItem[]) => {
     console.log('Files dropped:', files);
@@ -36,9 +39,14 @@ const ResourceUploadModal = ({opened,close}:Props) => {
         }
     }
     setUploadQueue(uploadQueueState)
-    setTimeout(()=>startUploading(files,runWhenAnyChunkFails),500)
+    if(folderId){ 
+      setTimeout(()=>startUploading(files,runWhenAnyChunkFails,[folderId]),500)
+    }
+    else { 
+      setTimeout(()=>startUploading(files,runWhenAnyChunkFails,),500)
+    }
     close()
-  }, [close, runWhenAnyChunkFails, setUploadQueue, startUploading]);
+  }, [close, folderId, runWhenAnyChunkFails, setUploadQueue, startUploading]);
 
   return (
       <Modal size={"xl"} opened={opened} onClose={close} title="Upload Resource" centered>
