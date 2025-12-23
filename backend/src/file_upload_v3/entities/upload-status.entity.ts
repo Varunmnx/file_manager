@@ -56,7 +56,7 @@ export class UploadEntity {
   @Prop({ type: String, name: 'fileHash' })
   public fileHash: string;
 
-  @Prop({ type: 'number', name: 'version' })
+  @Prop({ type: 'number', name: 'version', default: 0 })
   public version = 0;
 
   public static builder() {

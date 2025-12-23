@@ -397,7 +397,7 @@ export function ChunkedUploadProvider({
         return upload;
       }),
     );
-
+   if(uploadId)
     deleteFileFolderMutation.mutate({uploadIds:[uploadId]},{
       onSuccess: () => {
         console.log("deleted")

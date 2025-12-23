@@ -64,7 +64,31 @@ export class UploadPoolService {
             uploadStatus.setFileHash(fileHash)
         }
 
-        if (parent) {
+        if (parent) { 
+            for(let i = 0; i < parent.length; i++) {
+                const parentFolder = await this.fileFolderRepository.findById(parent[i])
+                if(!parentFolder || !parentFolder?.isFolder) {
+                    throw new NotFoundException('Parent folder not found');
+                }
+                // update parent folder size
+                console.log("parentFolder",parentFolder)
+                const parentFolderBuilder = parentFolder.toBuilder()
+                console.log("parent parentFolderBuilder", parentFolderBuilder)
+                parentFolderBuilder.setFileSize(parentFolder.fileSize + fileSize)
+                await this.fileFolderRepository.update(parentFolder._id, parentFolderBuilder.build())
+                if (parentFolder && parentFolder?.parents?.length > 0) {
+                    for (let j = 0; j < parentFolder.parents.length; j++) {
+                        const grandParent = await this.fileFolderRepository.findById(parentFolder.parents[j])
+                        if(!grandParent || !grandParent?.isFolder) {
+                            throw new NotFoundException('Parent folder not found');
+                        }
+                        // update the size of the grand parent
+                        const grandParentBuilder = grandParent.toBuilder()
+                        grandParentBuilder.setFileSize(grandParent.fileSize + fileSize)
+                        await this.fileFolderRepository.update(grandParent._id, grandParentBuilder.build())
+                    }
+                }
+            }
             uploadStatus.setParents(parent?.map(p => toObjectId(p)))
         }
 
@@ -175,7 +199,7 @@ export class UploadPoolService {
         if (!session) {
             throw new NotFoundException('Upload session not found');
         }
-
+        await this.resetParentFolderSizes([uploadId])
         this.cleanupChunks(uploadId);
         await this.fileFolderRepository.deleteMany({
             parents: session._id
@@ -226,6 +250,7 @@ export class UploadPoolService {
     }
 
     async deleteAllUploadedFiles(uploadIds:string[]) {
+        await this.resetParentFolderSizes(uploadIds)
         await this.fileFolderRepository.deleteMany({
             uploadId: { $in: uploadIds }
         })
@@ -242,6 +267,22 @@ export class UploadPoolService {
             success: true,
             message: 'All uploads cancelled',
         };
+    }
+
+
+    async resetParentFolderSizes(uploadIds: string[]){
+        for(const uploadId of uploadIds){
+            const currentlyDeletedFileOrFolder = await this.fileFolderRepository.findFolderByUploadId(uploadId)
+            if(currentlyDeletedFileOrFolder && currentlyDeletedFileOrFolder?.parents && currentlyDeletedFileOrFolder?.parents?.length > 0){
+                 for(const parent of currentlyDeletedFileOrFolder.parents){
+                    const parentFolder = await this.fileFolderRepository.findById(parent)
+                    if(!parentFolder) continue
+                    const parentFolderBuilder = parentFolder.toBuilder()
+                    parentFolderBuilder.setFileSize(parentFolder.fileSize - currentlyDeletedFileOrFolder.fileSize)
+                    await this.fileFolderRepository.update(parentFolder._id,parentFolderBuilder.build())
+                 }
+            }
+        } 
     }
 
     async pauseCurrentChunkUpload(uploadId: string, currentChunk:number) {
