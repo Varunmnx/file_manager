@@ -29,13 +29,16 @@ const ResourceUploadModal = ({opened,close}:Props) => {
 
   const onStartUpload = useCallback((tree: FileTreeItem[]) => {
     let uploadQueueState : UploadQueueState [] = []
-    let files:FileItem[] = []
+    const files:FileItem[] = []
     for(let i=0;i<tree.length;i++){
         const rootORFolder = tree[i] as RootItem | FolderItem
         if(rootORFolder.type === 'root'&& rootORFolder.children.length>0){
-          const filesWithIsPaused = rootORFolder?.children?.map(item=>({...item,isPaused:false}))  
+          const filesWithIsPaused = rootORFolder?.children?.map(item=>({...item,isPaused:false, status:"idle" as any}))  
           uploadQueueState = filesWithIsPaused
-          files = rootORFolder?.children
+          files.push(...rootORFolder.children)
+        }else {
+          // create folder 
+          // use folder uuid as parent id and upload files recursively also check if child have folder if so again create a folder and upload files under it 
         }
     }
     setUploadQueue(uploadQueueState)

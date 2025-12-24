@@ -115,35 +115,38 @@ export class UploadPoolService {
         return await this.fileFolderRepository.createFolder(folderName, parentId, folderSize)
     }
 
-    // eslint-disable-next-line @typescript-eslint/require-await
-    async uploadChunk(uploadId: string, chunkIndex: number, chunkBuffer: Buffer): Promise<void> {
+async uploadChunk(uploadId: string, chunkIndex: number, chunkBuffer: Buffer): Promise<void> {
+    const uploadSession = await this.fileFolderRepository.findFolderByUploadId(uploadId) 
 
-        const uploadSession = await this.fileFolderRepository.findFolderByUploadId(uploadId) 
-
-        if (!uploadSession) {
-            throw new NotFoundException('Upload session not found');
-        }
-
-        if (chunkIndex < 0 || chunkIndex >= uploadSession?.totalChunks) {
-            throw new BadRequestException('Invalid chunk index');
-        }
-
-        console.log("uploadSession",uploadSession)
-
-        // // Save chunk to disk
-        const chunkPath = join(this.chunksDir, uploadId, `chunk-${chunkIndex}`);
-        writeFileSync(chunkPath, chunkBuffer);
-        const newChunkList = [...uploadSession.uploadedChunks, chunkIndex]
-        const updatedUploadSession = uploadSession.toBuilder().setUploadedChunks(newChunkList).setLastActivity(new Date()).build()
-
-        await this.fileFolderRepository.update(uploadSession._id, updatedUploadSession)
-        if(newChunkList?.length == uploadSession.totalChunks){
-            console.log("uploadedChunks list",newChunkList?.length)
-            console.log("totalChunks",uploadSession.totalChunks)
-           
-            await this.completeUpload(uploadId)
-        }
+    if (!uploadSession) {
+        throw new NotFoundException('Upload session not found');
     }
+
+    if (chunkIndex < 0 || chunkIndex >= uploadSession?.totalChunks) {
+        throw new BadRequestException('Invalid chunk index');
+    }
+
+    // Save chunk to disk
+    const chunkPath = join(this.chunksDir, uploadId, `chunk-${chunkIndex}`);
+    writeFileSync(chunkPath, chunkBuffer);
+    
+    // **FIX: Only add chunk if it doesn't already exist**
+    let newChunkList = uploadSession.uploadedChunks || [];
+    if (!newChunkList.includes(chunkIndex)) {
+        newChunkList = [...newChunkList, chunkIndex].sort((a, b) => a - b); // Keep sorted
+    }
+    
+    const updatedUploadSession = uploadSession.toBuilder()
+        .setUploadedChunks(newChunkList)
+        .setLastActivity(new Date())
+        .build()
+
+    await this.fileFolderRepository.update(uploadSession._id, updatedUploadSession)
+    
+    if(newChunkList?.length == uploadSession.totalChunks){
+        await this.completeUpload(uploadId)
+    }
+}
 
     async getUploadStatus(uploadId: string) {
         let uploadSession = await this.fileFolderRepository.findFolderByUploadId(uploadId)
@@ -300,7 +303,7 @@ export class UploadPoolService {
         // check if provided chunk is updated in db 
         if(session.uploadedChunks?.includes(currentChunk)){
             // remove duplicate chunk index
-            const unique = session.uploadedChunks.filter((item, index) => session.uploadedChunks.indexOf(item) === index);
+            const unique = session.uploadedChunks.filter((item, index) => (session.uploadedChunks.indexOf(item) === index) || item !== currentChunk);
             sessionBuilder = sessionBuilder.setUploadedChunks(unique)
         }
         

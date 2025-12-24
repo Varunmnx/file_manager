@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import {
+import React, {
   createContext,
   use,
   useCallback,
@@ -52,13 +52,9 @@ interface ChunkedUploadContextValue {
     parents?: string[],
   ) => Promise<void>;
   cancelAllUploads: () => void;
-  pauseUpload: (
-    positionIndex: number,
-    uploadQueueItem: UploadQueueState,
-    uploadId?: string,
-  ) => void;
-  cancelCurrentUpload: (positionIndex: number, uploadId:string) => void;
-  setUploadQueue: (uploadQueue: UploadQueueState[]) => void;
+  pauseUpload: (uploadQueueItem: UploadQueueState) => void;
+  cancelCurrentUpload: (uploadId: string) => void;
+  setUploadQueue: React.Dispatch<React.SetStateAction<UploadQueueState[]>>;
   uploadQueue: UploadQueueState[];
   allFilesAndFolders: UploadedFile[];
   isLoading: boolean;
@@ -80,8 +76,9 @@ export function ChunkedUploadProvider({
 }: ChunkedUploadProviderProps) {
   const initiateUpload = useInitiateFileUpload();
   const getFileUploadState = useFileGetStatus();
-  const {folderId} = useParams()  
-  const uploadControllersRef = useRef<Map<number, AbortController>>(new Map());
+  const { folderId } = useParams();
+  // const uploadControllersRef = useRef<Map<number, AbortController>>(new Map());
+  const currentUploadAbortController = useRef<AbortController | null>(null);
   const isUploadingRef = useRef(false);
   const [uploadQueue, setUploadQueue] = useState<UploadQueueState[]>([]);
   const {
@@ -89,10 +86,8 @@ export function ChunkedUploadProvider({
     isLoading,
     refetch: refetchFilesAndFolders,
   } = useGetFiles(folderId);
-  const pauseUploadMutation = usePauseUpload()
-  const deleteFileFolderMutation = useDeleteAll()
-
-
+  const pauseUploadMutation = usePauseUpload();
+  const deleteFileFolderMutation = useDeleteAll();
 
   useEffect(() => {
     refetchFilesAndFolders();
@@ -141,11 +136,10 @@ export function ChunkedUploadProvider({
       parents?: string[],
     ) => {
       isUploadingRef.current = true;
-      let fileIndex = 0;
 
       for (const file of files) {
         const controller = new AbortController();
-        uploadControllersRef.current.set(fileIndex, controller);
+        currentUploadAbortController.current = controller;
 
         setUploadQueue((prev) =>
           prev.map((upload) => {
@@ -165,8 +159,14 @@ export function ChunkedUploadProvider({
           const response = await initiateUpload.mutateAsync({
             fileName: file.name,
             fileSize: file.size,
-            parent: parents
+            parent: parents,
           });
+
+          if(!response?.uploadId){
+           return setUploadQueue((prev) => {
+              return prev.filter(upload=>upload.name !== file.name);
+            })
+          }
 
           setUploadQueue((prev) => {
             return prev.map((upload) => {
@@ -187,7 +187,7 @@ export function ChunkedUploadProvider({
             let completedChunks = 0;
 
             for (const chunk of chunks) {
-              if (controller.signal.aborted) {
+              if (currentUploadAbortController.current.signal.aborted) {
                 break;
               }
 
@@ -202,7 +202,7 @@ export function ChunkedUploadProvider({
                   slug: Slug.UPLOAD_CHUNK,
                   body: formData,
                   axiosConfig: {
-                    signal: controller.signal,
+                    signal: currentUploadAbortController.current.signal,
                     onUploadProgress: (progressEvent) => {
                       const chunkProgress = progressEvent.total
                         ? Math.round(
@@ -210,10 +210,13 @@ export function ChunkedUploadProvider({
                           )
                         : 0;
 
-                      // Update progress with current chunk's upload progress
                       setUploadQueue((prev) =>
                         prev.map((upload) => {
-                          if (upload.name === file.name) {
+                          // **FIX: Don't update if already cancelled**
+                          if (
+                            upload.name === file.name &&
+                            upload.status !== "cancelled"
+                          ) {
                             const overallProgress = calculateOverallProgress(
                               completedChunks,
                               totalChunks,
@@ -325,32 +328,29 @@ export function ChunkedUploadProvider({
           }
 
           refetchFilesAndFolders();
-        } catch (error) {
-          if (error instanceof Error && error.name === "AbortError") {
-            console.log(`Upload cancelled for file at index ${fileIndex}`);
-          } else {
-            console.error(`Error initiating upload:`, error);
+        } catch (chunkError) {
+          if (chunkError) {
+            console.log(`Chunk upload cancelled for file: ${file.name}`);
+            // **FIX: Check if this file should be marked as cancelled**
             setUploadQueue((prev) =>
               prev.map((upload) => {
-                if (upload.name === file.name) {
+                if (
+                  upload.name === file.name &&
+                  upload.status !== "cancelled"
+                ) {
                   return {
                     ...upload,
-                    status: "error" as const,
-                    error:
-                      error instanceof Error
-                        ? error.message
-                        : "Failed to initiate upload",
+                    status: "cancelled" as const,
                   };
                 }
                 return upload;
               }),
             );
+            break;
           }
         } finally {
-          uploadControllersRef.current.delete(fileIndex);
+          currentUploadAbortController.current = null;
         }
-
-        fileIndex++;
       }
 
       isUploadingRef.current = false;
@@ -364,66 +364,63 @@ export function ChunkedUploadProvider({
   );
 
   const cancelAllUploads = useCallback(() => {
-    uploadControllersRef.current.forEach((controller) => {
-      controller.abort();
-    });
-    uploadControllersRef.current.clear();
+    currentUploadAbortController.current?.abort();
+    currentUploadAbortController.current = null;
     isUploadingRef.current = false;
     setUploadQueue([]);
     refetchFilesAndFolders();
   }, [refetchFilesAndFolders]);
 
-  function cancelCurrentUpload(currentUploadIndexPosition: number, uploadId: string) {
-    console.log("cancelling")
-    console.log(uploadControllersRef)
-    const controller = uploadControllersRef.current.get(
-      currentUploadIndexPosition,
+  function cancelCurrentUpload(uploadId: string) {
+    // **FIX: Set status to cancelled FIRST**
+    setUploadQueue((prev) =>
+      prev.filter(upload => upload.uploadId !== uploadId)
     );
-    console.log(currentUploadIndexPosition)
-    console.log(controller)
+
+    const controller = currentUploadAbortController.current;
+    console.log(controller);
     if (controller) {
       controller.abort();
-      uploadControllersRef.current.delete(currentUploadIndexPosition);
-
+      currentUploadAbortController.current = null;
     }
-    setUploadQueue((prev) =>
-      prev.map((upload) => {
-        if (upload.uploadId == uploadId) {
-          return {
-            ...upload,
-            status: "cancelled" as const,
-          };
-        }
-        return upload;
-      }),
-    );
-   if(uploadId)
-    deleteFileFolderMutation.mutate({uploadIds:[uploadId]},{
-      onSuccess: () => {
-        console.log("deleted")
-        refetchFilesAndFolders();
-      }
-    });
+
+    if (uploadId) {
+      deleteFileFolderMutation.mutate(
+        { uploadIds: [uploadId] },
+        {
+          onSuccess: () => {
+            console.log("deleted");
+            refetchFilesAndFolders();
+          },
+        },
+      );
+    }
   }
 
   async function resumeUpload(
     uploadQueueItem: UploadQueueState,
-    uploadId: string,
+    currentFileUploadState: UploadedFile,
   ) {
-    const currentFileUploadState =
-      await getFileUploadState.mutateAsync(uploadId);
-    const lastChunk = currentFileUploadState?.uploadedChunks?.pop();
+    const uploadedChunkIndices = currentFileUploadState?.uploadedChunks || [];
     const chunks = splitFileIntoChunks(uploadQueueItem.file);
     const file = uploadQueueItem.file;
-    if (!lastChunk) {
-      return;
-    }
-    
-    let completedChunks = lastChunk  
-    for (let i = lastChunk ; i < chunks.length; i++) {
+
+    // **FIX: Find the next chunk to upload**
+    const completedChunks = uploadedChunkIndices.length;
+
+    // Create a Set for faster lookup
+    const uploadedSet = new Set(uploadedChunkIndices);
+
+    for (let i = 0; i < chunks.length; i++) {
+      // **FIX: Skip already uploaded chunks**
+      if (uploadedSet.has(i)) {
+        continue;
+      }
+
       const chunk = chunks[i];
       const controller = new AbortController();
-      uploadControllersRef.current.set(i, controller);
+      currentUploadAbortController.current = controller;
+
       try {
         const formData = new FormData();
         formData.append("chunk", chunk.blob, file.name);
@@ -431,105 +428,49 @@ export function ChunkedUploadProvider({
         formData.append("chunkIndex", chunk.index.toString());
         formData.append("chunkSize", chunk.size.toString());
 
-        try {
-          const res = await API.post({
-            slug: Slug.UPLOAD_CHUNK,
-            body: formData,
-            axiosConfig: {
-              signal: controller.signal,
-              onUploadProgress: (progressEvent) => {
-                const chunkProgress = progressEvent.total
-                  ? Math.round(
-                      (progressEvent.loaded / progressEvent.total) * 100,
-                    )
-                  : 0;
+        const res = await API.post({
+          slug: Slug.UPLOAD_CHUNK,
+          body: formData,
+          axiosConfig: {
+            signal: currentUploadAbortController.current.signal,
+            onUploadProgress: (progressEvent) => {
+              const chunkProgress = progressEvent.total
+                ? Math.round((progressEvent.loaded / progressEvent.total) * 100)
+                : 0;
 
-                // Update progress with current chunk's upload progress
-                setUploadQueue((prev) =>
-                  prev.map((upload) => {
-                    if (upload.name === file.name) {
-                      const overallProgress = calculateOverallProgress(
-                        completedChunks,
-                        chunks.length,
-                        chunkProgress,
-                      );
+              setUploadQueue((prev) =>
+                prev.map((upload) => {
+                  if (upload.name === file.name) {
+                    const overallProgress = calculateOverallProgress(
+                      completedChunks + (i - completedChunks), // Current position in upload
+                      chunks.length,
+                      chunkProgress,
+                    );
 
-                      return {
-                        ...upload,
-                        status: "uploading" as const,
-                        percentage: overallProgress,
-                        currentChunkProgress: chunkProgress,
-                        totalChunks: chunks.length,
-                        uploadedChunks: [completedChunks],
-                      };
-                    }
-                    return upload;
-                  }),
-                );
-              },
+                    return {
+                      ...upload,
+                      status: "uploading" as const,
+                      percentage: overallProgress,
+                      currentChunkProgress: chunkProgress,
+                      totalChunks: chunks.length,
+                      uploadedChunks: uploadedChunkIndices,
+                    };
+                  }
+                  return upload;
+                }),
+              );
             },
-          });
+          },
+        });
 
-          if (!res) {
-            setUploadQueue((prev) =>
-              prev.map((upload) => {
-                if (upload.name === file.name) {
-                  return {
-                    ...upload,
-                    status: "error" as const,
-                    error: `Failed at chunk ${chunk.index + 1}`,
-                  };
-                }
-                return upload;
-              }),
-            );
-            break;
-          }
-
-          // Chunk completed successfully
-          completedChunks++;
-
-          setUploadQueue((prev) =>
-            prev.map((upload) => {
-              if (upload.name === file.name) {
-                const isComplete = completedChunks === chunks.length;
-                return {
-                  ...upload,
-                  status: isComplete
-                    ? ("completed" as const)
-                    : ("uploading" as const),
-                  percentage: isComplete
-                    ? 100
-                    : calculateOverallProgress(
-                        completedChunks,
-                        chunks.length,
-                        0,
-                      ),
-                  currentChunkProgress: 0,
-                  uploadedChunks: [completedChunks],
-                };
-              }
-              return upload;
-            }),
-          );
-        } catch (chunkError) {
-          if (chunkError instanceof Error && chunkError.name === "AbortError") {
-            console.log(`Chunk upload cancelled for file: ${file.name}`);
-            break;
-          }
-
-          console.error(`Error uploading chunk ${chunk.index}:`, chunkError);
-
+        if (!res) {
           setUploadQueue((prev) =>
             prev.map((upload) => {
               if (upload.name === file.name) {
                 return {
                   ...upload,
                   status: "error" as const,
-                  error:
-                    chunkError instanceof Error
-                      ? chunkError.message
-                      : "Upload failed",
+                  error: `Failed at chunk ${chunk.index + 1}`,
                 };
               }
               return upload;
@@ -537,6 +478,34 @@ export function ChunkedUploadProvider({
           );
           break;
         }
+
+        // **FIX: Add to uploaded set and array**
+        uploadedSet.add(i);
+        uploadedChunkIndices.push(i);
+
+        setUploadQueue((prev) =>
+          prev.map((upload) => {
+            if (upload.name === file.name) {
+              const isComplete = uploadedChunkIndices.length === chunks.length;
+              return {
+                ...upload,
+                status: isComplete
+                  ? ("completed" as const)
+                  : ("uploading" as const),
+                percentage: isComplete
+                  ? 100
+                  : calculateOverallProgress(
+                      uploadedChunkIndices.length,
+                      chunks.length,
+                      0,
+                    ),
+                currentChunkProgress: 0,
+                uploadedChunks: uploadedChunkIndices,
+              };
+            }
+            return upload;
+          }),
+        );
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
           console.log(`Upload cancelled for chunk at index ${i}`);
@@ -550,26 +519,10 @@ export function ChunkedUploadProvider({
   }
 
   const pauseUpload = useCallback(
-   async (
-      positionIndex: number,
-      uploadQueueItem: UploadQueueState,
-      uploadId?: string,
-    ) => {
-      const controller = uploadControllersRef.current.get(positionIndex);
-      if (controller) {
-        controller.abort();
-        uploadControllersRef.current.delete(positionIndex);
-      }
-
-      const response = await getFileUploadState.mutateAsync(uploadId as string);
-
+    async (uploadQueueItem: UploadQueueState) => {
       setUploadQueue((prev) =>
-        prev.map((upload, idx) => {
-          if (idx === positionIndex) {
-            if (upload.isPaused && uploadId) {
-              resumeUpload(uploadQueueItem, uploadId);
-            }
-            pauseUploadMutation.mutate({uploadId:uploadId as string, chunkIndex:response?.uploadedChunks[response?.uploadedChunks.length - 1] ?? 0});
+        prev.map((upload) => {
+          if (upload.uploadId === uploadQueueItem.uploadId) {
             return {
               ...upload,
               status: upload.isPaused ? "uploading" : ("paused" as const),
@@ -579,6 +532,32 @@ export function ChunkedUploadProvider({
           return upload;
         }),
       );
+      const controller = currentUploadAbortController.current;
+
+      if (controller) {
+        controller.abort();
+        currentUploadAbortController.current = null;
+      }
+
+      const response = await getFileUploadState.mutateAsync(
+        uploadQueueItem.uploadId as string,
+      );
+
+      if (uploadQueueItem.isPaused && uploadQueueItem.uploadId) {
+        pauseUploadMutation.mutate(
+          {
+            uploadId: uploadQueueItem.uploadId as string,
+            chunkIndex:
+              response?.uploadedChunks[response?.uploadedChunks.length - 1] ??
+              0,
+          },
+          {
+            onSuccess: () => {
+              resumeUpload(uploadQueueItem, response as UploadedFile);
+            },
+          },
+        );
+      }
     },
     [resumeUpload],
   );

@@ -24,7 +24,7 @@ const Page = () => {
   const [
     isCreateNewFolderOpened,
     { open: openCreateNewFolder, close: closeCreateNewFolder },
-  ] = useDisclosure(uploadQueue?.length > 0);
+  ] = useDisclosure(false);
   const deleteAllMutation = useDeleteAll();
   const createFolderMutation = useCreateFolder();
 
@@ -93,7 +93,7 @@ const Page = () => {
   const indeterminate =
     selectedFiles.size > 0 && selectedFiles.size < (data?.length || 0);
 
-  if (isLoading) {
+  if (isLoading || deleteAllMutation.isPending) {
     return <div>Loading...</div>;
   }
 
