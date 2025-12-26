@@ -45,11 +45,14 @@ export interface UploadQueueState {
     | "error";
 }
 
+export interface FileItemWithParentId extends FileItem {
+  parentId: string[];
+}
+
 interface ChunkedUploadContextValue {
   startUploading: (
-    files: FileItem[],
-    runWhenAnyChunkFails?: (error: string) => void,
-    parents?: string[],
+    files: FileItemWithParentId[],
+    runWhenAnyChunkFails?: (error: string) => void 
   ) => Promise<void>;
   cancelAllUploads: () => void;
   pauseUpload: (uploadQueueItem: UploadQueueState) => void;
@@ -131,9 +134,8 @@ export function ChunkedUploadProvider({
 
   const startUploading = useCallback(
     async (
-      files: FileItem[],
-      runWhenAnyChunkFails?: (error: string) => void,
-      parents?: string[],
+      files: FileItemWithParentId[],
+      runWhenAnyChunkFails?: (error: string) => void
     ) => {
       isUploadingRef.current = true;
 
@@ -159,7 +161,7 @@ export function ChunkedUploadProvider({
           const response = await initiateUpload.mutateAsync({
             fileName: file.name,
             fileSize: file.size,
-            parent: parents,
+            parent: file.parentId,
           });
 
           if(!response?.uploadId){
@@ -367,14 +369,22 @@ export function ChunkedUploadProvider({
     currentUploadAbortController.current?.abort();
     currentUploadAbortController.current = null;
     isUploadingRef.current = false;
-    setUploadQueue([]);
+    setUploadQueue(prev=>prev.map(upload => ({...upload, status: "cancelled"})));
     refetchFilesAndFolders();
   }, [refetchFilesAndFolders]);
 
   function cancelCurrentUpload(uploadId: string) {
     // **FIX: Set status to cancelled FIRST**
     setUploadQueue((prev) =>
-      prev.filter(upload => upload.uploadId !== uploadId)
+      prev.map((upload) => {
+        if (upload?.uploadId === uploadId) {
+          return {
+            ...upload,
+            status: "cancelled" as const,
+          };
+        }
+        return upload;
+      })
     );
 
     const controller = currentUploadAbortController.current;

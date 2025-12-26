@@ -8,7 +8,7 @@ export type UploadDocument = UploadEntity & Document;
 export class UploadEntity {
   @Prop({
     type: Types.ObjectId,
-    default: new Types.ObjectId(),
+    default: () => new Types.ObjectId(), // Function that generates new ID each time
   })
   public _id: Types.ObjectId;
 
@@ -47,10 +47,10 @@ export class UploadEntity {
   @Prop({ name: 'chunkSize', required: true })
   public chunkSize: number;
 
-  @Prop({ type: Date, name: 'createdAt', default: new Date() })
+  @Prop({ type: Date, name: 'createdAt', default: ()=>new Date() })
   public createdAt: Date;
 
-  @Prop({ type: Date, name: 'lastActivity', default: new Date() })
+  @Prop({ type: Date, name: 'lastActivity', default: ()=>new Date() })
   public lastActivity: Date;
 
   @Prop({ type: String, name: 'fileHash' })

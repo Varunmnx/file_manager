@@ -70,10 +70,8 @@ export class UploadPoolService {
                 if(!parentFolder || !parentFolder?.isFolder) {
                     throw new NotFoundException('Parent folder not found');
                 }
-                // update parent folder size
-                console.log("parentFolder",parentFolder)
-                const parentFolderBuilder = parentFolder.toBuilder()
-                console.log("parent parentFolderBuilder", parentFolderBuilder)
+                // update parent folder size 
+                const parentFolderBuilder = parentFolder.toBuilder() 
                 parentFolderBuilder.setFileSize(parentFolder.fileSize + fileSize)
                 await this.fileFolderRepository.update(parentFolder._id, parentFolderBuilder.build())
                 if (parentFolder && parentFolder?.parents?.length > 0) {
@@ -99,8 +97,7 @@ export class UploadPoolService {
 
         let newUpload = await this.fileFolderRepository.create(uploadStatus.build())
 
-        newUpload = await newUpload.save()
-        console.log("new upload", newUpload)
+        newUpload = await newUpload.save() 
 
          const uploadChunkDir = join(this.chunksDir, uploadId);
             if (!existsSync(uploadChunkDir)) {
@@ -171,7 +168,7 @@ async uploadChunk(uploadId: string, chunkIndex: number, chunkBuffer: Buffer): Pr
         if (session.uploadedChunks?.length !== session.totalChunks) {
             throw new BadRequestException('Not all chunks uploaded');
         }
-        console.log("Session",session)
+        
         // Merge chunks
         const finalFilePath = join(this.uploadDir, session.fileName);
         const writeStream = createWriteStream(finalFilePath);
@@ -248,6 +245,8 @@ async uploadChunk(uploadId: string, chunkIndex: number, chunkBuffer: Buffer): Pr
     }
 
     async getAllUploadsUnderFolder(parentId: string){
+        const all = await this.fileFolderRepository.find({})
+        console.log("all", all);
         const allUploadSessions = await this.fileFolderRepository.find({parents:parentId})
         return allUploadSessions?.filter((session) => session.uploadedChunks?.length === session.totalChunks)
     }

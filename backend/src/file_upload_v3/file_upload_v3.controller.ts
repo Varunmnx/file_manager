@@ -41,8 +41,8 @@ export class UploadController {
 
   @Post('folder')
   async createFolder(@Body() dto: CreateFolderDto) {
-    const uploadId = await this.uploadPoolService.createNewFolder(dto.folderName, dto.parent);
-    return { uploadId };
+    const {_id} = await this.uploadPoolService.createNewFolder(dto.folderName, dto.parent);
+    return { uploadId:_id };
   }
 
   @Post('chunk')

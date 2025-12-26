@@ -67,8 +67,9 @@ export class FileFolderRepository extends EntityRepository<UploadDocument> {
       
       // Handle parent folder logic
       if (parentId) {
+        console.log("parent id", toObjectId(parentId));
         const parentFolder = await this.entityModel.findById(toObjectId(parentId));
-        
+        console.log("parent folder", parentFolder);
         if (!parentFolder) {
           throw new NotFoundException(`Parent folder with id ${parentId} not found`);
         }
@@ -92,16 +93,25 @@ export class FileFolderRepository extends EntityRepository<UploadDocument> {
         isFolder: true
       });
 
-      
+      console.log("existing folder", existingFolder);
       if (existingFolder) {
         const isAllParentsSame = existingFolder.parents.every(parent => parents.includes(parent));
         
-        if (isAllParentsSame) {
+        if (isAllParentsSame&& existingFolder.parents.length !==0) {
           throw new ConflictException(`Folder "${folderName}" already exists in this location`);
         } 
       }
       
       // Create the folder - .create() already saves, so no need for .save()
+      console.log("payload",{ 
+        fileName: folderName.trim(), 
+        uploadId: uuid(), 
+        parents, 
+        chunkSize: 0, 
+        totalChunks: 0, 
+        fileSize: folderSize ?? 0, 
+        isFolder: true 
+      })
       const newFolder = await this.entityModel.create({ 
         fileName: folderName.trim(), 
         uploadId: uuid(), 
@@ -121,6 +131,7 @@ export class FileFolderRepository extends EntityRepository<UploadDocument> {
         throw error;
       }
       
+      console.log(error)
       // Handle MongoDB duplicate key errors
       if (error.code === 11000) {
         throw new ConflictException('A folder with this name already exists in this location');

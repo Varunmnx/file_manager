@@ -34,7 +34,7 @@ export default function Dropzone({
     handleDragLeave,
     handleFileInput,
     openFileDialog,
-    // openFolderDialog,
+    openFolderDialog,
     removeItem,
     clearAll,
   } = useDropzone({ accept, maxSize, maxFiles, multiple, onDrop }); 
@@ -90,12 +90,12 @@ export default function Dropzone({
           >
             Select Files
           </button>
-          {/* <button
+          <button
             onClick={openFolderDialog}
             className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm font-medium"
           >
             Select Folder
-          </button> */}
+          </button>
         </div>
         
         <p className="text-sm text-gray-500 mt-4">
