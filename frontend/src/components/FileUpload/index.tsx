@@ -1,5 +1,5 @@
-import "./index.css"
-import {FileTreeItem} from "./types"   
+import "./index.css";
+import { FileTreeItem } from "./types";
 import { useDropzone } from "./hooks/useDropZone";
 import { FolderItemComponent } from "./FolderItem";
 import FileItemComponent from "./FileItem";
@@ -11,17 +11,17 @@ interface DropzoneProps {
   multiple?: boolean;
   onDrop?: (files: File[], tree: FileTreeItem[]) => void;
   className?: string;
-  onUpload: (tree: FileTreeItem[]) => void
+  onUpload: (tree: FileTreeItem[]) => void;
 }
 
-export default function Dropzone({ 
-  accept = '*',
+export default function Dropzone({
+  accept = "*",
   maxSize = 5 * 1024 * 1024,
   maxFiles = 100,
   multiple = true,
   onDrop,
-  className = '',
-  onUpload
+  className = "",
+  onUpload,
 }: DropzoneProps) {
   const {
     fileTree,
@@ -37,7 +37,7 @@ export default function Dropzone({
     openFolderDialog,
     removeItem,
     clearAll,
-  } = useDropzone({ accept, maxSize, maxFiles, multiple, onDrop }); 
+  } = useDropzone({ accept, maxSize, maxFiles, multiple, onDrop });
 
   return (
     <div className={`w-full max-w-2xl mx-auto p-4 ${className}`}>
@@ -50,9 +50,10 @@ export default function Dropzone({
         className={`
           border-2 border-dashed rounded-lg p-8 text-center
           transition-all duration-200 ease-in-out
-          ${isDragging 
-            ? 'border-blue-500 bg-blue-50' 
-            : 'border-gray-300 bg-gray-50 hover:border-gray-400 hover:bg-gray-100'
+          ${
+            isDragging
+              ? "border-blue-500 bg-blue-50"
+              : "border-gray-300 bg-gray-50 hover:border-gray-400 hover:bg-gray-100"
           }
         `}
       >
@@ -64,25 +65,27 @@ export default function Dropzone({
           onChange={handleFileInput}
           className="hidden"
         />
-        
-        <svg 
-          className="mx-auto h-12 w-12 text-gray-400 mb-4" 
-          stroke="currentColor" 
-          fill="none" 
+
+        <svg
+          className="mx-auto h-12 w-12 text-gray-400 mb-4"
+          stroke="currentColor"
+          fill="none"
           viewBox="0 0 48 48"
         >
-          <path 
-            d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" 
-            strokeWidth="2" 
-            strokeLinecap="round" 
-            strokeLinejoin="round" 
+          <path
+            d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           />
         </svg>
-        
+
         <p className="text-lg font-medium text-gray-700 mb-4">
-          {isDragging ? 'Drop files or folders here' : 'Drop files/folders or click to upload'}
+          {isDragging
+            ? "Drop files or folders here"
+            : "Drop files/folders or click to upload"}
         </p>
-        
+
         <div className="flex gap-3 justify-center">
           <button
             onClick={openFileDialog}
@@ -97,10 +100,10 @@ export default function Dropzone({
             Select Folder
           </button>
         </div>
-        
+
         <p className="text-sm text-gray-500 mt-4">
-          {accept !== '*' ? `Accepted: ${accept}` : 'Any file type'} | 
-          Max {(maxSize / 1024 / 1024).toFixed(0)}MB per file
+          {accept !== "*" ? `Accepted: ${accept}` : "Any file type"} | Max{" "}
+          {(maxSize / 1024 / 1024).toFixed(0)}MB per file
         </p>
       </div>
 
@@ -123,8 +126,8 @@ export default function Dropzone({
             <h4 className="text-sm font-semibold text-gray-700">
               Uploaded Items ({fileTree.length})
             </h4>
-                        <button
-              onClick={()=>{
+            <button
+              onClick={() => {
                 onUpload(fileTree);
               }}
               className="text-sm text-red-600 hover:text-red-800 font-medium"
@@ -138,21 +141,21 @@ export default function Dropzone({
               Clear All
             </button>
           </div>
-          
+
           <div className="space-y-2">
             {fileTree.map((item, index) => (
               <div key={index} className="flex flex-col gap-2">
-                {item.type === 'folder' ? (
+                {item.type === "folder" ? (
                   <FolderItemComponent
-                    folder={item}  
+                    folder={item}
                     onRemove={() => removeItem(index)}
                   />
-                ) : item.type === 'root' ? (
+                ) : item.type === "root" ? (
                   item.children.map((child, childIndex) => (
                     <FileItemComponent
                       key={childIndex}
                       file={child}
-                      onRemove={() => removeItem(index, childIndex,"file")}
+                      onRemove={() => removeItem(index, childIndex, "file")}
                     />
                   ))
                 ) : null}
@@ -164,9 +167,3 @@ export default function Dropzone({
     </div>
   );
 }
-
-
-
-
-
- 
