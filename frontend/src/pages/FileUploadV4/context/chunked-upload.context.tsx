@@ -55,7 +55,7 @@ interface ChunkedUploadContextValue {
     runWhenAnyChunkFails?: (error: string) => void 
   ) => Promise<void>;
   cancelAllUploads: () => void;
-  pauseUpload: (uploadQueueItem: UploadQueueState) => void;
+  pauseUpload: (uploadQueueItem: UploadQueueState) => Promise<void>;
   cancelCurrentUpload: (uploadId: string) => void;
   setUploadQueue: React.Dispatch<React.SetStateAction<UploadQueueState[]>>;
   uploadQueue: UploadQueueState[];
@@ -416,8 +416,7 @@ export function ChunkedUploadProvider({
   ) {
     const uploadedChunkIndices = currentFileUploadState?.uploadedChunks || [];
     const chunks = splitFileIntoChunks(uploadQueueItem.file);
-    const file = uploadQueueItem.file;
-
+    const file = uploadQueueItem.file; 
     // **FIX: Find the next chunk to upload**
     const completedChunks = uploadedChunkIndices.length;
 
@@ -524,7 +523,8 @@ export function ChunkedUploadProvider({
           console.log(`Upload cancelled for chunk at index ${i}`);
         } else {
           console.error(`Error initiating upload:`, error);
-        }
+        } 
+        break;
       } finally {
         // uploadControllersRef.current.delete(i);
       }
@@ -548,8 +548,7 @@ export function ChunkedUploadProvider({
       const controller = currentUploadAbortController.current;
 
       if (controller) {
-        controller.abort("paused");
-        currentUploadAbortController.current = null;
+        controller.abort("paused"); 
       }
 
       const response = await getFileUploadState.mutateAsync(

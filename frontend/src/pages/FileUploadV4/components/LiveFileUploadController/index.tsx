@@ -15,7 +15,7 @@ import {
   IconPlayerPlay,
   IconTrash,
 } from "@tabler/icons-react";
-import { Activity, useState } from "react";
+import { Activity, useEffect, useState } from "react";
 import {
   UploadQueueState,
   useChunkedUpload,
@@ -26,10 +26,23 @@ const LiveFileUploadController = () => {
   const [isMinimized, setIsMinimized] = useState(false);
   const { pauseUpload, cancelCurrentUpload } = useChunkedUpload();
 
-  const handlePauseResume = (uploadQueueItem: UploadQueueState) => {
-    pauseUpload(uploadQueueItem);
-  };
+const [processingUploads, setProcessingUploads] = useState<Set<string>>(new Set());
 
+const handlePauseResume = (uploadQueueItem: UploadQueueState) => {
+  const uploadId = uploadQueueItem.uploadId;
+  if (!uploadId || processingUploads.has(uploadId)) return;
+  
+  setProcessingUploads(prev => new Set(prev).add(uploadId));
+  
+  pauseUpload(uploadQueueItem).finally(() => {
+    console.log("pause complete")
+    setProcessingUploads(prev => {
+      const next = new Set(prev);
+      next.delete(uploadId);
+      return next;
+    });
+  });
+};
   const handleDelete = (uploadId: string) => {
     cancelCurrentUpload(uploadId);
   };
@@ -38,9 +51,8 @@ const LiveFileUploadController = () => {
     setIsMinimized((prev) => !prev);
   };
 
-  interface FileFolderDisplayItem{
-    entityName: string;
-  }
+
+
 
   console.log("uploadQueue", uploadQueue);
 
@@ -92,7 +104,9 @@ const LiveFileUploadController = () => {
                           variant="subtle"
                           color={file.isPaused ? "blue" : "yellow"}
                           size="sm"
-                          onClick={() => handlePauseResume(file)}
+  onClick={() => handlePauseResume(file)}
+  disabled={processingUploads.has(file.uploadId)}
+  opacity={processingUploads.has(file.uploadId) ? 0.5 : 1}
                         >
                           {file.isPaused ? (
                             <IconPlayerPlay size={16} />

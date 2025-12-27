@@ -35,6 +35,7 @@ const Page = () => {
   
   const { isDragging } = useDragAndDrop({
     onFilesDropped: (files) => {
+      console.log("Files dropped:", files);
       setDroppedFiles(files);
       open(); // Open the modal immediately when files are dropped
     },
@@ -107,6 +108,11 @@ const Page = () => {
     }
   };
 
+    useEffect(() => {
+    if(uploadQueue.filter(item=>item.status == "uploading").length == 0){
+      refetch()
+    }
+  },[refetch, uploadQueue])
   const allSelected =
     (data?.length ?? 0) > 0 && selectedFiles.size === data?.length;
   const indeterminate =
