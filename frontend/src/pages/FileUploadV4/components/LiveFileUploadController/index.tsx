@@ -38,6 +38,10 @@ const LiveFileUploadController = () => {
     setIsMinimized((prev) => !prev);
   };
 
+  interface FileFolderDisplayItem{
+    entityName: string;
+  }
+
   console.log("uploadQueue", uploadQueue);
 
   return (

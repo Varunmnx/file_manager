@@ -9,7 +9,7 @@ import React, {
   useEffect,
 } from "react";
 import useInitiateFileUpload from "../hooks/useFileInitiateFileUpload";
-import { FileItem } from "@/components/FileUpload/types";
+import { FileItem, FolderItem } from "@/components/FileUpload/types";
 import { ChunkData } from "@/types/upload.types";
 import { API, Slug } from "@/services";
 import useGetFiles from "../hooks/useGetFiles";
@@ -46,7 +46,7 @@ export interface UploadQueueState {
 }
 
 export interface FileItemWithParentId extends FileItem {
-  parentId: string[];
+  parentId?: string[];
 }
 
 interface ChunkedUploadContextValue {
@@ -62,6 +62,8 @@ interface ChunkedUploadContextValue {
   allFilesAndFolders: UploadedFile[];
   isLoading: boolean;
   refetchFilesAndFolders: () => void;
+  folderList: FolderItem[];
+  setFolderList: React.Dispatch<React.SetStateAction<FolderItem[]>>;
 }
 
 interface ChunkedUploadProviderProps {
@@ -84,6 +86,7 @@ export function ChunkedUploadProvider({
   const currentUploadAbortController = useRef<AbortController | null>(null);
   const isUploadingRef = useRef(false);
   const [uploadQueue, setUploadQueue] = useState<UploadQueueState[]>([]);
+  const [folderList,setFolderList] = useState<FolderItem[]>([]);
   const {
     data: allFilesAndFolders,
     isLoading,
@@ -329,7 +332,6 @@ export function ChunkedUploadProvider({
             }
           }
 
-          refetchFilesAndFolders();
         } catch (chunkError) {
           if (chunkError) {
             console.log(`Chunk upload cancelled for file: ${file.name}`);
@@ -352,6 +354,8 @@ export function ChunkedUploadProvider({
           }
         } finally {
           currentUploadAbortController.current = null;
+          refetchFilesAndFolders();
+
         }
       }
 
@@ -582,6 +586,8 @@ export function ChunkedUploadProvider({
     allFilesAndFolders: allFilesAndFolders ?? [],
     isLoading,
     refetchFilesAndFolders,
+    folderList,
+    setFolderList
   };
 
   return <ChunkedUploadContext value={value}>{children}</ChunkedUploadContext>;

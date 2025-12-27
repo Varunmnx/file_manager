@@ -15,6 +15,7 @@ import {
 } from "../../context/chunked-upload.context";
 import { useParams } from "react-router-dom";
 import useCreateFolder from "../../hooks/createFolder";
+import { FILE } from "node:dns";
 
 interface Props {
   opened: boolean;
@@ -47,7 +48,7 @@ const groupFilesByPath = (files: FileItem[]): Map<string, FileItem[]> => {
     const folderPath = pathParts.slice(0, -1).join("/");
     
     const existingFiles = pathMap.get(folderPath) || [];
-    pathMap.set(folderPath, [...existingFiles, file]);
+    pathMap.set(folderPath, [...existingFiles, {...file,name:file.path}]);
   });
   
   return pathMap;
@@ -70,7 +71,8 @@ interface FolderMetadata {
 }
 const processFolders = async (
   files: FileItem[],
-  rootParentId: string 
+  rootParentId: string ,
+  rootParentName: string
 ): Promise<FileItemWithParentId[]> => {
   const pathToFilesMap = groupFilesByPath(files);
   const folderPaths = Array.from(pathToFilesMap.keys());
@@ -78,6 +80,13 @@ const processFolders = async (
   // Track created folders by their name and depth to avoid duplicates
   const createdFolders = new Map<string, FolderMetadata>();
   const filesWithParentIds: FileItemWithParentId[] = [];
+
+  if(rootParentName){
+    createdFolders.set(createFolderKey(rootParentName, 0), {
+      depth: 0,
+      parentId: rootParentId,
+    });
+  }
 
   // Process each unique folder path
   for (const folderPath of folderPaths) {
@@ -122,10 +131,16 @@ const processFolders = async (
     // Assign parent ID to all files in this path
     const filesInPath = pathToFilesMap.get(folderPath) || [];
     filesInPath.forEach((file) => {
-      filesWithParentIds.push({
-        ...file,
-        parentId: [currentParentId],
-      });
+      if(currentParentId){
+        filesWithParentIds.push({
+          ...file,
+          parentId: [currentParentId],
+        });
+      } else {
+        filesWithParentIds.push({
+          ...file 
+        });
+      }
     });
   }
 
@@ -153,7 +168,13 @@ const processFolders = async (
           }));
           uploadQueueState = filesWithIsPaused;
           // eslint-disable-next-line no-unsafe-optional-chaining
-          files.push(...rootORFolder.children?.map((item) => ({ ...item, parentId: [folderId as string] } as FileItemWithParentId)));
+          if(folderId){
+            // eslint-disable-next-line no-unsafe-optional-chaining
+            files.push(...rootORFolder.children?.map((item) => ({ ...item, parentId: [folderId as string] } as FileItemWithParentId)));
+          }else {
+            // eslint-disable-next-line no-unsafe-optional-chaining
+            files.push(...rootORFolder.children?.map((item) => ({ ...item } as FileItemWithParentId)));
+          }
 
           setUploadQueue(uploadQueueState);
         } else {
@@ -164,8 +185,21 @@ const processFolders = async (
           });
           if (data?.uploadId) {
             console.log("folder created");
-            const processedFoldersWithFiles  = await processFolders(rootORFolder.children, data?.uploadId as string);
+            const processedFoldersWithFiles  = await processFolders(rootORFolder.children, data?.uploadId as string,(rootORFolder as FolderItem).name);
             files.push(...processedFoldersWithFiles);
+            const uploadQueueState = processedFoldersWithFiles.map((file) => ({
+              ...file,
+              isPaused: false,
+              status: "idle" as
+                | "idle"
+                | "initiating"
+                | "uploading"
+                | "completed"
+                | "paused"
+                | "cancelled"
+                | "error",
+            }))
+            setUploadQueue(uploadQueueState);
           } else {
             toast.error("Failed to create folder");
           }

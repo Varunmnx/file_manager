@@ -170,7 +170,20 @@ async uploadChunk(uploadId: string, chunkIndex: number, chunkBuffer: Buffer): Pr
         }
         
         // Merge chunks
+        const folderArray = session.fileName.split('/')
+        if(folderArray.length > 1) {
+            const folderPath = join(this.uploadDir, folderArray.slice(0, folderArray.length - 1).join('/'))
+            if (!existsSync(folderPath)) {
+                mkdirSync(folderPath, { recursive: true });
+            }
+        }
         const finalFilePath = join(this.uploadDir, session.fileName);
+        const isExistingFile = existsSync(finalFilePath);
+
+        if (isExistingFile) {
+            unlinkSync(finalFilePath);
+
+        }
         const writeStream = createWriteStream(finalFilePath);
 
         for (let i = 0; i < session.totalChunks; i++) {
