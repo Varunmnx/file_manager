@@ -28,6 +28,7 @@ export interface UseDropzoneOptions {
   maxSize?: number;
   maxFiles?: number;
   multiple?: boolean;
+  initialFiles?: File[]
 }
 
 export interface UseDropzoneReturn {

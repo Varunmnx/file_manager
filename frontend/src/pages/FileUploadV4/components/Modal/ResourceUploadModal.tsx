@@ -14,20 +14,20 @@ import {
   useChunkedUpload,
 } from "../../context/chunked-upload.context";
 import { useParams } from "react-router-dom";
-import useCreateFolder from "../../hooks/createFolder";
-import { FILE } from "node:dns";
+import useCreateFolder from "../../hooks/createFolder"; 
 
 interface Props {
   opened: boolean;
   close: () => void;
+  initialFiles?: File[];
 }
 
-const ResourceUploadModal = ({ opened, close }: Props) => {
+const ResourceUploadModal = ({ opened, close, initialFiles = [] }: Props) => {
   const { startUploading, setUploadQueue } = useChunkedUpload();
   const params = useParams();
   const folderId = params?.folderId;
   const createFolderMutation = useCreateFolder();
-  const [folderPathAgainstFiles, setFolderPathAgainstFiles] = useState<
+  const [folderPathAgainstFiles] = useState<
     Map<string, Set<FileItem>>
   >(new Map());
 
@@ -40,117 +40,118 @@ const ResourceUploadModal = ({ opened, close }: Props) => {
     toast.error(error);
   }, []);
 
-const groupFilesByPath = (files: FileItem[]): Map<string, FileItem[]> => {
-  const pathMap = new Map<string, FileItem[]>();
-  
-  files.forEach((file) => {
-    const pathParts = file.path.split("/");
-    const folderPath = pathParts.slice(0, -1).join("/");
+  const groupFilesByPath = (files: FileItem[]): Map<string, FileItem[]> => {
+    const pathMap = new Map<string, FileItem[]>();
     
-    const existingFiles = pathMap.get(folderPath) || [];
-    pathMap.set(folderPath, [...existingFiles, {...file,name:file.path}]);
-  });
-  
-  return pathMap;
-};
-
-/**
- * Creates a unique folder key for tracking created folders
- */
-const createFolderKey = (folderName: string, depth: number): string => {
-  return `${folderName}__${depth}`;
-};
-
-/**
- * Processes folder structure and uploads files to appropriate parent folders
- */
-
-interface FolderMetadata {
-  parentId: string;
-  depth: number;
-}
-const processFolders = async (
-  files: FileItem[],
-  rootParentId: string ,
-  rootParentName: string
-): Promise<FileItemWithParentId[]> => {
-  const pathToFilesMap = groupFilesByPath(files);
-  const folderPaths = Array.from(pathToFilesMap.keys());
-  
-  // Track created folders by their name and depth to avoid duplicates
-  const createdFolders = new Map<string, FolderMetadata>();
-  const filesWithParentIds: FileItemWithParentId[] = [];
-
-  if(rootParentName){
-    createdFolders.set(createFolderKey(rootParentName, 0), {
-      depth: 0,
-      parentId: rootParentId,
+    files.forEach((file) => {
+      const pathParts = file.path.split("/");
+      const folderPath = pathParts.slice(0, -1).join("/");
+      
+      const existingFiles = pathMap.get(folderPath) || [];
+      pathMap.set(folderPath, [...existingFiles, {...file, name: file.path}]);
     });
+    
+    return pathMap;
+  };
+
+  /**
+   * Creates a unique folder key for tracking created folders
+   */
+  const createFolderKey = (folderName: string, depth: number): string => {
+    return `${folderName}__${depth}`;
+  };
+
+  /**
+   * Processes folder structure and uploads files to appropriate parent folders
+   */
+  interface FolderMetadata {
+    parentId: string;
+    depth: number;
   }
+  
+  const processFolders = async (
+    files: FileItem[],
+    rootParentId: string,
+    rootParentName: string
+  ): Promise<FileItemWithParentId[]> => {
+    const pathToFilesMap = groupFilesByPath(files);
+    const folderPaths = Array.from(pathToFilesMap.keys());
+    
+    // Track created folders by their name and depth to avoid duplicates
+    const createdFolders = new Map<string, FolderMetadata>();
+    const filesWithParentIds: FileItemWithParentId[] = [];
 
-  // Process each unique folder path
-  for (const folderPath of folderPaths) {
-    const folderNames = folderPath.split("/").filter(name => name.trim() !== "");
-    let currentParentId = rootParentId;
-
-    // Create nested folder structure
-    for (let depth = 0; depth < folderNames.length; depth++) {
-      const folderName = folderNames[depth];
-      const folderKey = createFolderKey(folderName, depth);
-
-      // Check if folder already created at this depth
-      if (createdFolders.has(folderKey)) {
-        const metadata = createdFolders.get(folderKey)!;
-        currentParentId = metadata.parentId;
-        continue;
-      }
-
-      // Create new folder
-      try {
-        const response = await createFolderMutation.mutateAsync({
-          folderName,
-          parent: currentParentId,
-          folderSize: 0,
-        });
-
-        if (response?.uploadId) {
-          createdFolders.set(folderKey, {
-            depth,
-            parentId: response.uploadId,
-          });
-          currentParentId = response.uploadId;
-        } else {
-          throw new Error(`Failed to create folder: ${folderName}`);
-        }
-      } catch (error) {
-        console.error(`Error creating folder ${folderName}:`, error);
-        throw error;
-      }
+    if (rootParentName) {
+      createdFolders.set(createFolderKey(rootParentName, 0), {
+        depth: 0,
+        parentId: rootParentId,
+      });
     }
 
-    // Assign parent ID to all files in this path
-    const filesInPath = pathToFilesMap.get(folderPath) || [];
-    filesInPath.forEach((file) => {
-      if(currentParentId){
-        filesWithParentIds.push({
-          ...file,
-          parentId: [currentParentId],
-        });
-      } else {
-        filesWithParentIds.push({
-          ...file 
-        });
-      }
-    });
-  }
+    // Process each unique folder path
+    for (const folderPath of folderPaths) {
+      const folderNames = folderPath.split("/").filter(name => name.trim() !== "");
+      let currentParentId = rootParentId;
 
-  return filesWithParentIds;
-};
+      // Create nested folder structure
+      for (let depth = 0; depth < folderNames.length; depth++) {
+        const folderName = folderNames[depth];
+        const folderKey = createFolderKey(folderName, depth);
+
+        // Check if folder already created at this depth
+        if (createdFolders.has(folderKey)) {
+          const metadata = createdFolders.get(folderKey)!;
+          currentParentId = metadata.parentId;
+          continue;
+        }
+
+        // Create new folder
+        try {
+          const response = await createFolderMutation.mutateAsync({
+            folderName,
+            parent: currentParentId,
+            folderSize: 0,
+          });
+
+          if (response?.uploadId) {
+            createdFolders.set(folderKey, {
+              depth,
+              parentId: response.uploadId,
+            });
+            currentParentId = response.uploadId;
+          } else {
+            throw new Error(`Failed to create folder: ${folderName}`);
+          }
+        } catch (error) {
+          console.error(`Error creating folder ${folderName}:`, error);
+          throw error;
+        }
+      }
+
+      // Assign parent ID to all files in this path
+      const filesInPath = pathToFilesMap.get(folderPath) || [];
+      filesInPath.forEach((file) => {
+        if (currentParentId) {
+          filesWithParentIds.push({
+            ...file,
+            parentId: [currentParentId],
+          });
+        } else {
+          filesWithParentIds.push({
+            ...file 
+          });
+        }
+      });
+    }
+
+    return filesWithParentIds;
+  };
 
   const onStartUpload = useCallback(
     async (tree: FileTreeItem[]) => {
       let uploadQueueState: UploadQueueState[] = [];
       const files: FileItemWithParentId[] = [];
+      
       for (let i = 0; i < tree.length; i++) {
         const rootORFolder = tree[i] as FileTreeItem;
         if (rootORFolder.type === "root" && rootORFolder.children.length > 0) {
@@ -167,13 +168,17 @@ const processFolders = async (
               | "error",
           }));
           uploadQueueState = filesWithIsPaused;
-          // eslint-disable-next-line no-unsafe-optional-chaining
-          if(folderId){
+          
+          if (folderId) {
+            files.push(...rootORFolder.children?.map((item) => ({ 
+              ...item, 
+              parentId: [folderId as string] 
+            } as FileItemWithParentId)));
+          } else {
             // eslint-disable-next-line no-unsafe-optional-chaining
-            files.push(...rootORFolder.children?.map((item) => ({ ...item, parentId: [folderId as string] } as FileItemWithParentId)));
-          }else {
-            // eslint-disable-next-line no-unsafe-optional-chaining
-            files.push(...rootORFolder.children?.map((item) => ({ ...item } as FileItemWithParentId)));
+            files.push(...rootORFolder.children?.map((item) => ({ 
+              ...item 
+            } as FileItemWithParentId)));
           }
 
           setUploadQueue(uploadQueueState);
@@ -183,9 +188,14 @@ const processFolders = async (
             parent: folderId,
             folderSize: 0,
           });
+          
           if (data?.uploadId) {
             console.log("folder created");
-            const processedFoldersWithFiles  = await processFolders(rootORFolder.children, data?.uploadId as string,(rootORFolder as FolderItem).name);
+            const processedFoldersWithFiles = await processFolders(
+              rootORFolder.children, 
+              data?.uploadId as string,
+              (rootORFolder as FolderItem).name
+            );
             files.push(...processedFoldersWithFiles);
             const uploadQueueState = processedFoldersWithFiles.map((file) => ({
               ...file,
@@ -198,7 +208,7 @@ const processFolders = async (
                 | "paused"
                 | "cancelled"
                 | "error",
-            }))
+            }));
             setUploadQueue(uploadQueueState);
           } else {
             toast.error("Failed to create folder");
@@ -206,18 +216,13 @@ const processFolders = async (
         }
       }
 
-   console.log("files", files);
-        setTimeout(
-          () =>
-            startUploading(
-              files,
-              runWhenAnyChunkFails,
-            ),
-          500,
-        );
+      console.log("files", files);
+      setTimeout(
+        () => startUploading(files, runWhenAnyChunkFails),
+        500,
+      );
      
       folderPathAgainstFiles.clear();
-
       close();
     },
     [close, createFolderMutation, folderId, folderPathAgainstFiles, processFolders, setUploadQueue],
@@ -237,6 +242,7 @@ const processFolders = async (
         maxSize={1000 * 1024 * 1024}
         onUpload={onStartUpload}
         onDrop={onDropCallback}
+        initialFiles={initialFiles}
       />
     </Modal>
   );

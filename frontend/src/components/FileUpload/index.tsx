@@ -2,7 +2,7 @@ import "./index.css";
 import { FileTreeItem } from "./types";
 import { useDropzone } from "./hooks/useDropZone";
 import { FolderItemComponent } from "./FolderItem";
-import FileItemComponent from "./FileItem";
+import FileItemComponent from "./FileItem"; 
 
 interface DropzoneProps {
   accept?: string;
@@ -12,6 +12,7 @@ interface DropzoneProps {
   onDrop?: (files: File[], tree: FileTreeItem[]) => void;
   className?: string;
   onUpload: (tree: FileTreeItem[]) => void;
+  initialFiles?: File[];
 }
 
 export default function Dropzone({
@@ -22,6 +23,7 @@ export default function Dropzone({
   onDrop,
   className = "",
   onUpload,
+  initialFiles = [],
 }: DropzoneProps) {
   const {
     fileTree,
@@ -37,7 +39,9 @@ export default function Dropzone({
     openFolderDialog,
     removeItem,
     clearAll,
-  } = useDropzone({ accept, maxSize, maxFiles, multiple, onDrop });
+  } = useDropzone({ accept, maxSize, maxFiles, multiple, onDrop, initialFiles });
+
+
 
   return (
     <div className={`w-full max-w-2xl mx-auto p-4 ${className}`}>
@@ -130,7 +134,7 @@ export default function Dropzone({
               onClick={() => {
                 onUpload(fileTree);
               }}
-              className="text-sm text-red-600 hover:text-red-800 font-medium"
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
             >
               Upload Files
             </button>

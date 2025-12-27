@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { FileTreeItem, FolderItem, RootItem, UseDropzoneOptions, UseDropzoneReturn, FileItem } from '../types';
 
 export function useDropzone(options: UseDropzoneOptions = {}): UseDropzoneReturn {
@@ -9,6 +9,7 @@ export function useDropzone(options: UseDropzoneOptions = {}): UseDropzoneReturn
     maxSize = 5 * 1024 * 1024,
     maxFiles = 100,
     multiple = true,
+    initialFiles = [],
   } = options;
 
   const [fileTree, setFileTree] = useState<FileTreeItem[]>([]);
@@ -239,6 +240,13 @@ export function useDropzone(options: UseDropzoneOptions = {}): UseDropzoneReturn
     }
   }, [validateFile, buildFileTree, onDrop, multiple, maxFiles, getTotalFileCount]);
 
+  // Process initial files when component mounts
+  useEffect(() => {
+    if (initialFiles && initialFiles.length > 0) {
+      processFiles(initialFiles);
+    }
+  }, []); // Only run once on mount
+
   const readDirectory = async (
     dirEntry: any,
     path: string,
@@ -370,21 +378,17 @@ export function useDropzone(options: UseDropzoneOptions = {}): UseDropzoneReturn
     }
   }, []);
 
-  const removeItem = useCallback((index: number,childIndex?:number,type?:"file"|"folder") => {
-    console.log(fileTree)
-    if(type === "file"){
+  const removeItem = useCallback((index: number, childIndex?: number, type?: "file" | "folder") => {
+    console.log(fileTree);
+    if (type === "file") {
       const file = fileTree[index];
       const filteredChildren = file.children?.filter((_, idx) => idx !== childIndex);
-      setFileTree(prev => prev.map(f => f === file ? { ...f, children: filteredChildren } : f))
-    }else{
+      setFileTree(prev => prev.map(f => f === file ? { ...f, children: filteredChildren } : f));
+    } else {
       setFileTree(prev => prev.filter((_, i) => i !== index));
     }
     setErrors([]);
   }, [fileTree]);
-
-  // const removeFileItem = useCallback((index: number) => {
-  //   setErrors([]);
-  // }, []);
 
   const clearAll = useCallback(() => {
     setFileTree([]);

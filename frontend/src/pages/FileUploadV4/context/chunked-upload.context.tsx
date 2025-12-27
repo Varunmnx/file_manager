@@ -317,7 +317,7 @@ export function ChunkedUploadProvider({
                     if (upload.name === file.name) {
                       return {
                         ...upload,
-                        status: "error" as const,
+                        status: (chunkError as any).config.signal.reason == "paused"?"paused":"error" as const,
                         error:
                           chunkError instanceof Error
                             ? chunkError.message
@@ -344,7 +344,7 @@ export function ChunkedUploadProvider({
                 ) {
                   return {
                     ...upload,
-                    status: "cancelled" as const,
+                    status:  (chunkError as any).config.signal.reason == "paused"?"paused":"error" as const,
                   };
                 }
                 return upload;
@@ -355,7 +355,6 @@ export function ChunkedUploadProvider({
         } finally {
           currentUploadAbortController.current = null;
           refetchFilesAndFolders();
-
         }
       }
 
@@ -549,7 +548,7 @@ export function ChunkedUploadProvider({
       const controller = currentUploadAbortController.current;
 
       if (controller) {
-        controller.abort();
+        controller.abort("paused");
         currentUploadAbortController.current = null;
       }
 
