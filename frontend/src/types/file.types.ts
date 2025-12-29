@@ -1,5 +1,4 @@
-export interface UploadedFile  {
-  uploadId: string;
+export interface UploadedFile  { 
   fileName: string;
   fileSize: number;
   totalChunks: number;

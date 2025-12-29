@@ -26,33 +26,32 @@ const LiveFileUploadController = () => {
   const [isMinimized, setIsMinimized] = useState(false);
   const { pauseUpload, cancelCurrentUpload } = useChunkedUpload();
 
-const [processingUploads, setProcessingUploads] = useState<Set<string>>(new Set());
+  const [processingUploads, setProcessingUploads] = useState<Set<string>>(
+    new Set(),
+  );
 
-const handlePauseResume = (uploadQueueItem: UploadQueueState) => {
-  const uploadId = uploadQueueItem.uploadId;
-  if (!uploadId || processingUploads.has(uploadId)) return;
-  
-  setProcessingUploads(prev => new Set(prev).add(uploadId));
-  
-  pauseUpload(uploadQueueItem).finally(() => {
-    console.log("pause complete")
-    setProcessingUploads(prev => {
-      const next = new Set(prev);
-      next.delete(uploadId);
-      return next;
+  const handlePauseResume = (uploadQueueItem: UploadQueueState) => {
+    const _id = uploadQueueItem._id;
+    if (!_id || processingUploads.has(_id)) return;
+
+    setProcessingUploads((prev) => new Set(prev).add(_id));
+
+    pauseUpload(uploadQueueItem).finally(() => {
+      console.log("pause complete");
+      setProcessingUploads((prev) => {
+        const next = new Set(prev);
+        next.delete(_id);
+        return next;
+      });
     });
-  });
-};
-  const handleDelete = (uploadId: string) => {
-    cancelCurrentUpload(uploadId);
+  };
+  const handleDelete = (_id: string) => {
+    cancelCurrentUpload(_id);
   };
 
   const handleMinimize = () => {
     setIsMinimized((prev) => !prev);
   };
-
-
-
 
   console.log("uploadQueue", uploadQueue);
 
@@ -87,26 +86,29 @@ const handlePauseResume = (uploadQueueItem: UploadQueueState) => {
         <Activity mode={isMinimized ? "hidden" : "visible"}>
           <Stack gap={12}>
             {uploadQueue
-              ?.filter(
-                (file) =>{
-                  return (file.status == "uploading") || (file.status == "paused") || (file.status == "initiating"|| file.status == "idle")
-                }
-              )
+              ?.filter((file) => {
+                return (
+                  file.status == "uploading" ||
+                  file.status == "paused" ||
+                  file.status == "initiating" ||
+                  file.status == "idle"
+                );
+              })
               .map((file, idx) => (
                 <Box key={`file-item-${idx}`}>
                   <Group justify="space-between" mb={8}>
                     <Text size="sm" fw={500} style={{ flex: 1 }} truncate>
                       {file?.name ?? "unknown file"}
                     </Text>
-                    {file?.uploadId && (
+                    {file?._id && (
                       <Group gap={8}>
                         <ActionIcon
                           variant="subtle"
                           color={file.isPaused ? "blue" : "yellow"}
                           size="sm"
-  onClick={() => handlePauseResume(file)}
-  disabled={processingUploads.has(file.uploadId)}
-  opacity={processingUploads.has(file.uploadId) ? 0.5 : 1}
+                          onClick={() => handlePauseResume(file)}
+                          disabled={processingUploads.has(file._id)}
+                          opacity={processingUploads.has(file._id) ? 0.5 : 1}
                         >
                           {file.isPaused ? (
                             <IconPlayerPlay size={16} />
@@ -118,7 +120,7 @@ const handlePauseResume = (uploadQueueItem: UploadQueueState) => {
                           variant="subtle"
                           color="red"
                           size="sm"
-                          onClick={() => handleDelete(file.uploadId as string)}
+                          onClick={() => handleDelete(file._id as string)}
                         >
                           <IconTrash size={16} />
                         </ActionIcon>

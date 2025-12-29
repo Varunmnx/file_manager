@@ -3,9 +3,8 @@ import { Injectable, ConflictException, NotFoundException, BadRequestException }
 import { EntityRepository } from '../../db/entity-repository';
 import { UploadDocument, UploadEntity } from '../entities/upload-status.entity';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, MongooseError, QueryFilter, Types } from 'mongoose';
-import { toObjectId } from 'src/common/utils';
-import { v4 as uuid } from 'uuid';
+import { Model, QueryFilter, Types } from 'mongoose';
+import { toObjectId } from 'src/common/utils'; 
 
 
 @Injectable()
@@ -14,20 +13,6 @@ export class FileFolderRepository extends EntityRepository<UploadDocument> {
     super(uploadEntity);
   }
 
-  async findFolderByUploadId(uploadId: string): Promise<UploadDocument | null> {
-    try {
-      if (!uploadId) {
-        throw new BadRequestException('Upload ID is required');
-      }
-      return await this.entityModel.findOne({ uploadId });
-    } catch (error) {
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-      console.error('Error finding folder by uploadId:', error);
-      throw new Error('Could not find folder');
-    }
-  }
 
   async update(id: Types.ObjectId, updatedUploadSessionStatus: Partial<UploadEntity>): Promise<UploadDocument | null> {
     try {
@@ -57,120 +42,116 @@ export class FileFolderRepository extends EntityRepository<UploadDocument> {
     }
   }
 
-  async createFolder(folderName: string, parentId?: string, folderSize?: number): Promise<UploadDocument> {
-    try {
-      if (!folderName || folderName.trim() === '') {
-        throw new BadRequestException('Folder name is required');
-      }
-
-      let parents: Types.ObjectId[] = [];
-      
-      // Handle parent folder logic
-      if (parentId) {
-        console.log("parent id", toObjectId(parentId));
-        const parentFolder = await this.entityModel.findById(toObjectId(parentId));
-        console.log("parent folder", parentFolder);
-        if (!parentFolder) {
-          throw new NotFoundException(`Parent folder with id ${parentId} not found`);
-        }
-        
-        if (!parentFolder.isFolder) {
-          throw new BadRequestException('Parent must be a folder');
-        }
-        
-        // Build parents array - Include all ancestors PLUS the direct parent
-        if (parentFolder.parents && parentFolder.parents.length > 0) {
-          parents = [...parentFolder.parents, toObjectId(parentId)];
-        } else {
-          parents = [toObjectId(parentId)];
-        }
-        
-        // Update parent folder size
-        const parentFolderBuilder = parentFolder.toBuilder();
-        parentFolderBuilder.setFileSize(parentFolder.fileSize + (folderSize ?? 0));
-        await this.update(parentFolder._id, parentFolderBuilder.build());
-        
-        // Update all ancestor folder sizes
-        if (parentFolder.parents && parentFolder.parents.length > 0) {
-          for (const ancestorId of parentFolder.parents) {
-            const ancestor = await this.findById(ancestorId.toString());
-            if (ancestor && ancestor.isFolder) {
-              const ancestorBuilder = ancestor.toBuilder();
-              ancestorBuilder.setFileSize(ancestor.fileSize + (folderSize ?? 0));
-              await this.update(ancestor._id, ancestorBuilder.build());
-            }
-          }
-        }
-      }
-      
-      // Check if folder with same name already exists in the same parent location
-      const query: QueryFilter<UploadDocument> = {
-        fileName: folderName.trim(),
-        isFolder: true
-      };
-      
-      // Check for exact parent match
-      if (parents.length > 0) {
-        // Find folders with the same direct parent (last element in parents array)
-        const directParent = parents[parents.length - 1];
-        query.$expr = {
-          $and: [
-            { $eq: [{ $size: "$parents" }, parents.length] },
-            { $eq: [{ $arrayElemAt: ["$parents", -1] }, directParent] }
-          ]
-        };
-      } else {
-        // Root level folder
-        query.parents = { $size: 0 };
-      }
-
-      const existingFolder = await this.entityModel.findOne(query);
-
-      console.log("existing folder", existingFolder);
-      if (existingFolder) {
-        throw new ConflictException(`Folder "${folderName}" already exists in this location`);
-      }
-      
-      // Create the folder
-      console.log("payload", { 
-        fileName: folderName.trim(), 
-        uploadId: uuid(), 
-        parents, 
-        chunkSize: 0, 
-        totalChunks: 0, 
-        fileSize: folderSize ?? 0, 
-        isFolder: true 
-      });
-      
-      const newFolder = await this.entityModel.create({ 
-        fileName: folderName.trim(), 
-        uploadId: uuid(), 
-        parents, 
-        chunkSize: 0, 
-        totalChunks: 0, 
-        fileSize: folderSize ?? 0, 
-        isFolder: true 
-      });
-      
-      return newFolder;
-      
-    } catch (error) {
-      if (error instanceof BadRequestException || 
-          error instanceof NotFoundException || 
-          error instanceof ConflictException) {
-        throw error;
-      }
-      
-      console.log(error);
-      // Handle MongoDB duplicate key errors
-      if (error.code === 11000) {
-        throw new ConflictException('A folder with this name already exists in this location');
-      }
-      
-      console.error('Error creating folder:', error);
-      throw new Error('Could not create folder');
-    }
+   async buildFullParentPath(folderId: Types.ObjectId): Promise<Types.ObjectId[]> {
+  const folder = await this.entityModel.findById(folderId);
+  if (!folder || !folder.isFolder) {
+    return []; // Should not happen if validated earlier
   }
+
+  // Base case: root folder (no parents or empty)
+  if (!folder.parents || folder.parents.length === 0) {
+    return [folderId];
+  }
+
+  // Get direct parent: last item in parents array (by convention)
+  const directParentId = folder.parents[folder.parents.length - 1];
+
+  // Recursively get full path to direct parent
+  const parentPath = await this.buildFullParentPath(directParentId);
+
+  // Append current folder ID only if not already included (avoid cycles)
+  if (!parentPath.includes(folderId)) {
+    return [...parentPath, folderId];
+  }
+
+  // Safety: avoid infinite recursion due to data corruption
+  console.warn(`Cycle detected in folder ancestry for ID: ${folderId.toString()}`);
+  return parentPath;
+}
+
+async createFolder(folderName: string, parentId?: string, folderSize?: number): Promise<UploadDocument> {
+  try {
+    if (!folderName || folderName.trim() === '') {
+      throw new BadRequestException('Folder name is required');
+    }
+
+    let parents: Types.ObjectId[] = [];
+
+    if (parentId) {
+      const parentIdObj = toObjectId(parentId);
+      const parentFolder = await this.entityModel.findById(parentIdObj);
+
+      if (!parentFolder) {
+        throw new NotFoundException(`Parent folder with id ${parentId} not found`);
+      }
+
+      if (!parentFolder.isFolder) {
+        throw new BadRequestException('Parent must be a folder');
+      }
+
+      // ✅ Recursively build full ancestor path
+      parents = await this.buildFullParentPath(parentIdObj);
+
+      // ✅ Update all ancestors (including direct parent) with new folder size
+      for (const ancestorId of parents) {
+        const ancestor = await this.findById(ancestorId);
+        if (ancestor && ancestor.isFolder) {
+          const builder = ancestor.toBuilder();
+          builder.setFileSize(ancestor.fileSize + (folderSize ?? 0));
+          await this.update(ancestor._id, builder.build());
+        }
+      }
+    }
+
+    // ✅ Prevent duplicate folder names in same parent context
+    const query: QueryFilter<UploadDocument> = {
+      fileName: folderName.trim(),
+      isFolder: true,
+    };
+
+    if (parents.length > 0) {
+      // Match exact parents array (full path)
+      query.parents = parents;
+    } else {
+      query.$or = [
+        { parents: { $exists: false } },
+        { parents: { $size: 0 } },
+        { parents: [] }
+      ];
+    }
+
+    const existingFolder = await this.entityModel.findOne(query);
+    if (existingFolder) {
+      throw new ConflictException(`Folder "${folderName}" already exists in this location`);
+    }
+
+    const newFolder = await this.entityModel.create({
+      fileName: folderName.trim(),
+      parents,
+      chunkSize: 0,
+      totalChunks: 0,
+      fileSize: folderSize ?? 0,
+      isFolder: true,
+    });
+
+    return newFolder;
+  } catch (error) {
+    if (
+      error instanceof BadRequestException ||
+      error instanceof NotFoundException ||
+      error instanceof ConflictException
+    ) {
+      throw error;
+    }
+
+    if (error.code === 11000) {
+      throw new ConflictException('A folder with this name already exists in this location');
+    }
+
+    console.error('Error creating folder:', error);
+    throw new Error('Could not create folder');
+  }
+}
   
   // FIXED: Accept both string and Types.ObjectId
   async findById(id: Types.ObjectId | string): Promise<UploadDocument | null> {
@@ -182,7 +163,7 @@ export class FileFolderRepository extends EntityRepository<UploadDocument> {
       const document = await this.entityModel.findById(toObjectId(id));
       
       if (!document) {
-        throw new NotFoundException(`Document with id ${id} not found`);
+        throw new NotFoundException(`Document with id ${id.toString()} not found`);
       }
       
       return document;

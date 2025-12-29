@@ -50,7 +50,7 @@ export const useDragAndDrop = ({ onFilesDropped, enabled = true }: UseDragAndDro
 
       const files: File[] = [];
       const items = e.dataTransfer?.items;
-
+console.log(" items>>>>>>>>>>>>>>>>", e)
       if (items) {
         // Process DataTransferItemList
         for (let i = 0; i < items.length; i++) {

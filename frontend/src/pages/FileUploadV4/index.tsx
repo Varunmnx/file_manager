@@ -12,6 +12,7 @@ import CreateFolderModal from "./components/Modal/CreateFolderModal";
 import useCreateFolder from "./hooks/createFolder"; 
 import { useNavigate, useParams } from "react-router-dom";
 import { useDragAndDrop } from "./hooks/useDragDrop";
+import useFileGetStatus from "./hooks/useFileGetStatus";
 
 const Page = () => {
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
@@ -24,6 +25,7 @@ const Page = () => {
     refetchFilesAndFolders: refetch,
     isLoading,
   } = useChunkedUpload(); 
+  const getUploadStatusMutation = useFileGetStatus()
   
   const [opened, { open, close }] = useDisclosure(false);
   const [
@@ -34,14 +36,19 @@ const Page = () => {
   const deleteAllMutation = useDeleteAll();
   const createFolderMutation = useCreateFolder();
   
-  const { isDragging } = useDragAndDrop({
-    onFilesDropped: (files) => {
-      console.log("Files dropped:", files);
-      setDroppedFiles(files);
-      open(); // Open the modal immediately when files are dropped
-    },
-    enabled: true,
-  });
+  const { isDragging } = useDragAndDrop({});
+
+
+  useEffect(() => {
+    if(isDragging)open()
+  }, [isDragging]);
+
+
+  useEffect(() => {
+    if (folderId) {
+      getUploadStatusMutation.mutate(folderId)
+    }
+  }, [folderId]);
 
   // Close the modal and clear dropped files when modal is closed
   const handleModalClose = () => {
@@ -52,7 +59,7 @@ const Page = () => {
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       setSelectedFiles(
-        new Set(data?.map((file: UploadedFile) => file.uploadId as string)),
+        new Set(data?.map((file: UploadedFile) => file._id as string)),
       );
     } else {
       setSelectedFiles(new Set());
@@ -126,7 +133,7 @@ const Page = () => {
   return (
     <div className="w-screen h-screen flex justify-center relative overflow-x-hidden overflow-y-scroll">
       {/* Drag overlay */}
-      {isDragging && (
+      {/* {isDragging && (
         <div className="fixed inset-0 bg-blue-500/20 backdrop-blur-sm z-40 flex items-center justify-center pointer-events-none">
           <div className="bg-white rounded-lg shadow-xl p-8 border-2 border-blue-500 border-dashed">
             <svg
@@ -147,11 +154,11 @@ const Page = () => {
             </p>
           </div>
         </div>
-      )}
+      )} */}
 
-      {opened && (
+      {(opened) && (
         <ResourceUploadModal 
-          opened={opened} 
+          opened={(opened)} 
           close={handleModalClose}
           initialFiles={droppedFiles}
         />
@@ -163,7 +170,7 @@ const Page = () => {
           close={closeCreateNewFolder}
         />
       )}
-      {uploadQueue.length > 0 && <LiveFileUploadController />}
+      { <LiveFileUploadController />}
       <div className="w-3/4 py-8">
         <Flex justify={"right"} align={"center"}>
           
@@ -174,7 +181,7 @@ const Page = () => {
           />
         </Flex>
         {
-          folderId ? <FileFolderLocation folderIds={(data![0]?.parents ?? [])} /> : <h1>F Manager</h1>
+          folderId ? <FileFolderLocation folderIds={ folderId ?( getUploadStatusMutation.data?.parents ?? []) : []} /> : <h1>F Manager</h1>
         }
         <div className="mt-10" />
         <FileFolderTable
@@ -193,6 +200,7 @@ const Page = () => {
 };
 
 const FileFolderLocation = ({folderIds}: {folderIds: string[]})=>{
+
   return (
     <Breadcrumbs>
       <Anchor href="/">Home</Anchor>

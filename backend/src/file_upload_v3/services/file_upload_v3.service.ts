@@ -1,15 +1,13 @@
 /* eslint-disable prettier/prettier */
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { createWriteStream, existsSync, readFileSync, writeFileSync, unlinkSync, rmSync, mkdirSync } from 'fs';
-import { join } from 'path';
-import { v4 as uuid } from 'uuid';
+import { join } from 'path'; 
 import { FileFolderRepository } from '../repositories/file-folder.repository';
 import { UploadDocument, UploadEntity } from '../entities/upload-status.entity'; 
 import { toObjectId } from 'src/common/utils';
 import { Types } from 'mongoose';
 
-export interface UploadSession {
-    uploadId: string;
+export interface UploadSession { 
     fileName: string;
     fileSize: number;
     totalChunks: number;
@@ -38,10 +36,8 @@ export class UploadPoolService {
         children?: string[], 
         fileHash?: string, 
         resourceType?: "dir" | "file"
-    ): Promise<string> {
-        const uploadId = uuid();
-        const session: UploadSession = {
-            uploadId,
+    ): Promise<string> { 
+        const session: UploadSession = { 
             fileName,
             fileSize,
             totalChunks,
@@ -55,7 +51,7 @@ export class UploadPoolService {
 
         const uploadStatus = UploadEntity.builder();
 
-        uploadStatus.setUploadId(uploadId)
+        uploadStatus 
             .setFileName(fileName)
             .setFileSize(fileSize)
             .setTotalChunks(totalChunks)
@@ -99,6 +95,7 @@ export class UploadPoolService {
             }
             
             // Set the complete lineage in the upload entity
+            fullParentLineage = await this.fileFolderRepository.buildFullParentPath(toObjectId(directParentId));
             uploadStatus.setParents(fullParentLineage);
         }
 
@@ -109,12 +106,12 @@ export class UploadPoolService {
         let newUpload = await this.fileFolderRepository.create(uploadStatus.build());
         newUpload = await newUpload.save();
 
-        const uploadChunkDir = join(this.chunksDir, uploadId);
+        const uploadChunkDir = join(this.chunksDir, newUpload._id.toString());
         if (!existsSync(uploadChunkDir)) {
             mkdirSync(uploadChunkDir, { recursive: true });
         }
         
-        return newUpload.uploadId;
+        return newUpload._id.toString();
     }
 
     async createNewFolder(folderName: string, parentId?: string, folderSize?: number): Promise<UploadDocument> { 
@@ -122,7 +119,7 @@ export class UploadPoolService {
     }
 
     async uploadChunk(uploadId: string, chunkIndex: number, chunkBuffer: Buffer): Promise<void> {
-        const uploadSession = await this.fileFolderRepository.findFolderByUploadId(uploadId);
+        const uploadSession = await this.fileFolderRepository.findById(uploadId);
 
         if (!uploadSession) {
             throw new NotFoundException('Upload session not found');
@@ -155,7 +152,7 @@ export class UploadPoolService {
     }
 
     async getUploadStatus(uploadId: string) {
-        let uploadSession = await this.fileFolderRepository.findFolderByUploadId(uploadId);
+        let uploadSession = await this.fileFolderRepository.findById(uploadId);
         uploadSession = uploadSession?.toObject() as UploadDocument;
         
         if (!uploadSession) {
@@ -170,7 +167,7 @@ export class UploadPoolService {
     }
 
     async completeUpload(uploadId: string): Promise<string> {
-        const session = await this.fileFolderRepository.findFolderByUploadId(uploadId);
+        const session = await this.fileFolderRepository.findById(uploadId);
         
         if (!session) {
             throw new NotFoundException('Upload session not found');
@@ -219,7 +216,7 @@ export class UploadPoolService {
     }
 
     async cancelUpload(uploadId: string) {
-        const session = await this.fileFolderRepository.findFolderByUploadId(uploadId);
+        const session = await this.fileFolderRepository.findById(uploadId);
         
         if (!session) {
             throw new NotFoundException('Upload session not found');
@@ -233,7 +230,7 @@ export class UploadPoolService {
             parents: session._id
         });
         
-        await this.fileFolderRepository.deleteOne(session._id);
+        await this.fileFolderRepository.deleteOne(toObjectId(uploadId));
     }
 
     private cleanupChunks(uploadId: string): void {
@@ -262,9 +259,7 @@ export class UploadPoolService {
     async deleteAllUploadedFiles(uploadIds: string[]) {
         await this.resetParentFolderSizes(uploadIds);
         
-        await this.fileFolderRepository.deleteMany({
-            uploadId: { $in: uploadIds }
-        });
+        await this.fileFolderRepository.deleteMany({_id:uploadIds?.map((id) => toObjectId(id))});
         
         // Remove everything in chunks dir
         const dir = join(this.chunksDir);
@@ -284,7 +279,7 @@ export class UploadPoolService {
 
     async resetParentFolderSizes(uploadIds: string[]) {
         for (const uploadId of uploadIds) {
-            const currentlyDeletedFileOrFolder = await this.fileFolderRepository.findFolderByUploadId(uploadId);
+            const currentlyDeletedFileOrFolder = await this.fileFolderRepository.findById(uploadId);
             
             if (currentlyDeletedFileOrFolder && currentlyDeletedFileOrFolder.parents && currentlyDeletedFileOrFolder.parents.length > 0) {
                 for (const parent of currentlyDeletedFileOrFolder.parents) {
@@ -300,7 +295,7 @@ export class UploadPoolService {
     }
 
     async pauseCurrentChunkUpload(uploadId: string, currentChunk: number) {
-        const session = await this.fileFolderRepository.findFolderByUploadId(uploadId);
+        const session = await this.fileFolderRepository.findById(uploadId);
         
         if (!session) {
             throw new NotFoundException('Upload session not found');

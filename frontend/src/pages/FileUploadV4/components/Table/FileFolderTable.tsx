@@ -50,13 +50,13 @@ const FileFolderTable = (props: Props) => {
       </Table.Thead>
       <Table.Tbody>
         {data?.map((file: UploadedFile) => (
-          <Table.Tr onClick={() => onFileFolderRowClick?.(file._id as string, !!file?.isFolder)} key={file?.uploadId as string}>
+          <Table.Tr onClick={() => onFileFolderRowClick?.(file._id as string, !!file?.isFolder)} key={file?._id as string}>
             <Table.Td>
               <Checkbox
-                checked={selectedFiles.has(file.uploadId as string)}
+                checked={selectedFiles.has(file._id as string)}
                 onChange={(e) =>
                   handleSelectFile(
-                    file.uploadId as string,
+                    file._id as string,
                     e.currentTarget.checked,
                   )
                 }
@@ -87,7 +87,7 @@ const FileFolderTable = (props: Props) => {
               {getShortDate(file?.createdAt as unknown as string)}
             </Table.Td>
             <Table.Td>
-              <ActionIcon onClick={()=>handleDeleteFile(file.uploadId as string)} variant="subtle" color="red">
+              <ActionIcon onClick={()=>handleDeleteFile(file._id as string)} variant="subtle" color="red">
                 <img
                   src={TrashIcon}
                   alt="delete"

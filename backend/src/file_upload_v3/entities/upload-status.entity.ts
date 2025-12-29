@@ -12,9 +12,6 @@ export class UploadEntity {
   })
   public _id: Types.ObjectId;
 
-  @Prop({ name: 'uploadId', required: true, unique: true })
-  public uploadId: string;
-
   @Prop({ name: 'isFolder', required: false, default: false })
   public isFolder: boolean;
 
@@ -67,7 +64,6 @@ export class UploadEntity {
     const builder = UploadEntity.builder();
 
     builder._id = this._id;
-    builder.uploadId = this.uploadId;
     builder.fileName = this.fileName;
     builder.fileSize = this.fileSize;
     builder.totalChunks = this.totalChunks;
@@ -86,7 +82,6 @@ export class UploadEntity {
 
   public static Builder = class {
     _id: Types.ObjectId;
-    uploadId: string;
     fileName: string;
     fileSize: number;
     totalChunks: number;
@@ -99,11 +94,6 @@ export class UploadEntity {
     children: Types.ObjectId[];
     isFolder: boolean;
     fileHash: string;
-
-    public setUploadId(value: string) {
-      this.uploadId = value;
-      return this;
-    }
 
     public setFileName(value: string) {
       this.fileName = value;
@@ -170,7 +160,6 @@ export class UploadEntity {
       this.lastActivity = new Date();
 
       e._id = this._id;
-      e.uploadId = this.uploadId;
       e.fileName = this.fileName;
       e.fileSize = this.fileSize;
       e.totalChunks = this.totalChunks;

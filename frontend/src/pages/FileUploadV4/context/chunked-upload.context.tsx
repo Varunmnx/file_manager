@@ -27,7 +27,7 @@ export interface UploadQueueState {
   path: string;
   percentage?: number;
   isPaused?: boolean;
-  uploadId?: string;
+  _id?: string;
   chunkSize?: number;
   totalChunks?: number;
   uploadedChunks?: number[];
@@ -56,7 +56,7 @@ interface ChunkedUploadContextValue {
   ) => Promise<void>;
   cancelAllUploads: () => void;
   pauseUpload: (uploadQueueItem: UploadQueueState) => Promise<void>;
-  cancelCurrentUpload: (uploadId: string) => void;
+  cancelCurrentUpload: (_id: string) => void;
   setUploadQueue: React.Dispatch<React.SetStateAction<UploadQueueState[]>>;
   uploadQueue: UploadQueueState[];
   allFilesAndFolders: UploadedFile[];
@@ -178,7 +178,7 @@ export function ChunkedUploadProvider({
               if (upload.name === file.name) {
                 return {
                   ...upload,
-                  uploadId: response?.uploadId,
+                  _id: response?.uploadId,
                 };
               }
               return upload;
@@ -376,11 +376,11 @@ export function ChunkedUploadProvider({
     refetchFilesAndFolders();
   }, [refetchFilesAndFolders]);
 
-  function cancelCurrentUpload(uploadId: string) {
+  function cancelCurrentUpload(_id: string) {
     // **FIX: Set status to cancelled FIRST**
     setUploadQueue((prev) =>
       prev.map((upload) => {
-        if (upload?.uploadId === uploadId) {
+        if (upload?._id === _id) {
           return {
             ...upload,
             status: "cancelled" as const,
@@ -397,9 +397,9 @@ export function ChunkedUploadProvider({
       currentUploadAbortController.current = null;
     }
 
-    if (uploadId) {
+    if (_id) {
       deleteFileFolderMutation.mutate(
-        { uploadIds: [uploadId] },
+        { uploadIds: [_id] },
         {
           onSuccess: () => {
             console.log("deleted");
@@ -436,7 +436,7 @@ export function ChunkedUploadProvider({
       try {
         const formData = new FormData();
         formData.append("chunk", chunk.blob, file.name);
-        formData.append("uploadId", uploadQueueItem?.uploadId ?? "no-uuid");
+        formData.append("uploadId", uploadQueueItem?._id ?? "no-uuid");
         formData.append("chunkIndex", chunk.index.toString());
         formData.append("chunkSize", chunk.size.toString());
 
@@ -535,7 +535,7 @@ export function ChunkedUploadProvider({
     async (uploadQueueItem: UploadQueueState) => {
       setUploadQueue((prev) =>
         prev.map((upload) => {
-          if (upload.uploadId === uploadQueueItem.uploadId) {
+          if (upload._id === uploadQueueItem._id) {
             return {
               ...upload,
               status: upload.isPaused ? "uploading" : ("paused" as const),
@@ -552,13 +552,13 @@ export function ChunkedUploadProvider({
       }
 
       const response = await getFileUploadState.mutateAsync(
-        uploadQueueItem.uploadId as string,
+        uploadQueueItem._id as string,
       );
 
-      if (uploadQueueItem.isPaused && uploadQueueItem.uploadId) {
+      if (uploadQueueItem.isPaused && uploadQueueItem._id) {
         pauseUploadMutation.mutate(
           {
-            uploadId: uploadQueueItem.uploadId as string,
+            uploadId: uploadQueueItem._id as string,
             chunkIndex:
               response?.uploadedChunks[response?.uploadedChunks.length - 1] ??
               0,
