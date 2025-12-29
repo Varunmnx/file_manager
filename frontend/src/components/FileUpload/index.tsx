@@ -13,6 +13,7 @@ interface DropzoneProps {
   className?: string;
   onUpload: (tree: FileTreeItem[]) => void;
   initialFiles?: File[];
+  isLoading?: boolean
 }
 
 export default function Dropzone({
@@ -24,6 +25,7 @@ export default function Dropzone({
   className = "",
   onUpload,
   initialFiles = [],
+  isLoading
 }: DropzoneProps) {
   const {
     fileTree,
@@ -68,6 +70,8 @@ export default function Dropzone({
           multiple={multiple}
           onChange={handleFileInput}
           className="hidden"
+            disabled={isLoading}
+
         />
 
         <svg
@@ -92,12 +96,14 @@ export default function Dropzone({
 
         <div className="flex gap-3 justify-center">
           <button
+            disabled={isLoading}
             onClick={openFileDialog}
             className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
           >
             Select Files
           </button>
           <button
+            disabled={isLoading}
             onClick={openFolderDialog}
             className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm font-medium"
           >
@@ -131,6 +137,8 @@ export default function Dropzone({
               Uploaded Items ({fileTree.length})
             </h4>
             <button
+            disabled={isLoading}
+
               onClick={() => {
                 onUpload(fileTree);
               }}

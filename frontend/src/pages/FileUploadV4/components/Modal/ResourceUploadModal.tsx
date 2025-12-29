@@ -27,6 +27,7 @@ const ResourceUploadModal = ({ opened, close, initialFiles = [] }: Props) => {
   const params = useParams();
   const folderId = params?.folderId;
   const createFolderMutation = useCreateFolder();
+  const [isLoading, setIsLoading] = useState(false);
   const [folderPathAgainstFiles] = useState<
     Map<string, Set<FileItem>>
   >(new Map());
@@ -149,6 +150,7 @@ const ResourceUploadModal = ({ opened, close, initialFiles = [] }: Props) => {
 
   const onStartUpload = useCallback(
     async (tree: FileTreeItem[]) => {
+      setIsLoading(true);
       let uploadQueueState: UploadQueueState[] = [];
       const files: FileItemWithParentId[] = [];
       
@@ -239,6 +241,7 @@ const ResourceUploadModal = ({ opened, close, initialFiles = [] }: Props) => {
       {/* Modal content */}
       <Dropzone
         maxFiles={100}
+        isLoading={isLoading}
         maxSize={1000 * 1024 * 1024}
         onUpload={onStartUpload}
         onDrop={onDropCallback}
