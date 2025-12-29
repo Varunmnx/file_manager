@@ -2,7 +2,7 @@ import { UploadedFile } from "@/types/file.types";
 import { useEffect, useState } from "react";
 import FileFolderTable from "./components/Table/FileFolderTable";
 import ToggleMenu from "./components/Menu";
-import { Flex } from "@mantine/core";
+import { Anchor, Breadcrumbs, Flex } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import ResourceUploadModal from "./components/Modal/ResourceUploadModal";
 import LiveFileUploadController from "./components/LiveFileUploadController";
@@ -10,12 +10,13 @@ import { useChunkedUpload } from "./context/chunked-upload.context";
 import useDeleteAll from "./hooks/useDeleteAll";
 import CreateFolderModal from "./components/Modal/CreateFolderModal";
 import useCreateFolder from "./hooks/createFolder"; 
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useDragAndDrop } from "./hooks/useDragDrop";
 
 const Page = () => {
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
+  const { folderId } = useParams();
   
   const {
     uploadQueue,
@@ -123,7 +124,7 @@ const Page = () => {
   }
 
   return (
-    <div className="w-screen h-screen flex justify-center relative">
+    <div className="w-screen h-screen flex justify-center relative overflow-x-hidden overflow-y-scroll">
       {/* Drag overlay */}
       {isDragging && (
         <div className="fixed inset-0 bg-blue-500/20 backdrop-blur-sm z-40 flex items-center justify-center pointer-events-none">
@@ -162,16 +163,19 @@ const Page = () => {
           close={closeCreateNewFolder}
         />
       )}
-      <LiveFileUploadController />
+      {uploadQueue.length > 0 && <LiveFileUploadController />}
       <div className="w-3/4 py-8">
-        <Flex justify="space-between" align={"center"}>
-          <h1 className="text-2xl font-bold">All Files</h1>
+        <Flex justify={"right"} align={"center"}>
+          
           <ToggleMenu
             deleteAllUploads={deleteAllUploads}
             onResourceUpload={open}
             openCreateNewFolder={openCreateNewFolder}
           />
         </Flex>
+        {
+          folderId ? <FileFolderLocation folderIds={(data![0]?.parents ?? [])} /> : <h1>F Manager</h1>
+        }
         <div className="mt-10" />
         <FileFolderTable
           allSelected={allSelected}
@@ -187,5 +191,18 @@ const Page = () => {
     </div>
   );
 };
+
+const FileFolderLocation = ({folderIds}: {folderIds: string[]})=>{
+  return (
+    <Breadcrumbs>
+      <Anchor href="/">Home</Anchor>
+      {
+        folderIds.map((folderId: string) => (
+          <Anchor href={`/${folderId}`}>{folderId}</Anchor>
+        ))
+      }
+    </Breadcrumbs>
+  )
+}
 
 export default Page;

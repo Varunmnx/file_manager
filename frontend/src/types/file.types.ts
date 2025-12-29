@@ -9,5 +9,8 @@ export interface UploadedFile  {
   lastActivity: Date;
   fileHash?: string;
   isFolder?: boolean;
+  resourceType?: 'dir' | 'file';
+  parents?: string[]
+  children?: string[]
   _id?: string
 }

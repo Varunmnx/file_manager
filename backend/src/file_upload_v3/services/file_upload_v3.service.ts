@@ -1,12 +1,12 @@
 /* eslint-disable prettier/prettier */
-// upload-pool.service.ts
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { createWriteStream, existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, rmSync, mkdirSync } from 'fs';
+import { createWriteStream, existsSync, readFileSync, writeFileSync, unlinkSync, rmSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { v4 as uuid } from 'uuid';
 import { FileFolderRepository } from '../repositories/file-folder.repository';
 import { UploadDocument, UploadEntity } from '../entities/upload-status.entity'; 
 import { toObjectId } from 'src/common/utils';
+import { Types } from 'mongoose';
 
 export interface UploadSession {
     uploadId: string;
@@ -21,20 +21,24 @@ export interface UploadSession {
     resourceType?: 'dir' | 'file';
 }
 
-
 @Injectable()
 export class UploadPoolService {
-    // private uploadSessions: Map<string, UploadSession> = new Map();
     private readonly uploadDir = join(process.cwd(), 'uploads');
     private readonly chunksDir = join(process.cwd(), 'uploads', 'chunks');
     private readonly metaDataDir = join(process.cwd(), 'uploads', 'meta');
     private readonly sessionTimeout = 24 * 60 * 60 * 1000; // 24 hours
 
-    constructor(private readonly fileFolderRepository: FileFolderRepository) {
+    constructor(private readonly fileFolderRepository: FileFolderRepository) {}
 
-    }
-
-    async initiateUpload(fileName: string, fileSize: number, totalChunks: number, parent?: string[], children?: string[], fileHash?: string, resourceType?: "dir" | "file"): Promise<string> {
+    async initiateUpload(
+        fileName: string, 
+        fileSize: number, 
+        totalChunks: number, 
+        parent?: string[], 
+        children?: string[], 
+        fileHash?: string, 
+        resourceType?: "dir" | "file"
+    ): Promise<string> {
         const uploadId = uuid();
         const session: UploadSession = {
             uploadId,
@@ -49,7 +53,7 @@ export class UploadPoolService {
             resourceType: resourceType ?? "file"
         };
 
-        const uploadStatus = UploadEntity.builder()
+        const uploadStatus = UploadEntity.builder();
 
         uploadStatus.setUploadId(uploadId)
             .setFileName(fileName)
@@ -58,109 +62,116 @@ export class UploadPoolService {
             .setUploadedChunks(session.uploadedChunks)
             .setChunkSize(session.chunkSize)
             .setLastActivity(session.lastActivity)
-            .setIsFolder(session.resourceType == "dir")
+            .setIsFolder(session.resourceType === "dir");
 
         if (fileHash) {
-            uploadStatus.setFileHash(fileHash)
+            uploadStatus.setFileHash(fileHash);
         }
 
-        if (parent) { 
-            for(let i = 0; i < parent.length; i++) {
-                const parentFolder = await this.fileFolderRepository.findById(parent[i])
-                if(!parentFolder || !parentFolder?.isFolder) {
-                    throw new NotFoundException('Parent folder not found');
-                }
-                // update parent folder size 
-                const parentFolderBuilder = parentFolder.toBuilder() 
-                parentFolderBuilder.setFileSize(parentFolder.fileSize + fileSize)
-                await this.fileFolderRepository.update(parentFolder._id, parentFolderBuilder.build())
-                if (parentFolder && parentFolder?.parents?.length > 0) {
-                    for (let j = 0; j < parentFolder.parents.length; j++) {
-                        const grandParent = await this.fileFolderRepository.findById(parentFolder.parents[j])
-                        if(!grandParent || !grandParent?.isFolder) {
-                            throw new NotFoundException('Parent folder not found');
-                        }
-                        // update the size of the grand parent
-                        const grandParentBuilder = grandParent.toBuilder()
-                        grandParentBuilder.setFileSize(grandParent.fileSize + fileSize)
-                        await this.fileFolderRepository.update(grandParent._id, grandParentBuilder.build())
-                    }
-                }
+        // Build proper parent lineage
+        if (parent && parent.length > 0) {
+            // Get the direct parent (last item in the array from frontend)
+            const directParentId = parent[parent.length - 1];
+            const parentFolder = await this.fileFolderRepository.findById(directParentId);
+            
+            if (!parentFolder || !parentFolder.isFolder) {
+                throw new NotFoundException('Parent folder not found');
             }
-            uploadStatus.setParents(parent?.map(p => toObjectId(p)))
+            
+            // Build the complete lineage: all parent's ancestors + the parent itself
+            let fullParentLineage: Types.ObjectId[];
+            if (parentFolder.parents && parentFolder.parents.length > 0) {
+                fullParentLineage = [...parentFolder.parents, toObjectId(directParentId)];
+            } else {
+                fullParentLineage = [toObjectId(directParentId)];
+            }
+            
+            // Update all ancestors' sizes
+            for (const ancestorId of fullParentLineage) {
+                const ancestorFolder = await this.fileFolderRepository.findById(ancestorId);
+                if (!ancestorFolder || !ancestorFolder.isFolder) {
+                    throw new NotFoundException('Ancestor folder not found');
+                }
+                
+                const ancestorBuilder = ancestorFolder.toBuilder();
+                ancestorBuilder.setFileSize(ancestorFolder.fileSize + fileSize);
+                await this.fileFolderRepository.update(ancestorFolder._id, ancestorBuilder.build());
+            }
+            
+            // Set the complete lineage in the upload entity
+            uploadStatus.setParents(fullParentLineage);
         }
 
         if (children) {
-            uploadStatus.setChildren(children?.map(p => toObjectId(p)))
+            uploadStatus.setChildren(children.map(c => toObjectId(c)));
         }
          
+        let newUpload = await this.fileFolderRepository.create(uploadStatus.build());
+        newUpload = await newUpload.save();
 
-        let newUpload = await this.fileFolderRepository.create(uploadStatus.build())
-
-        newUpload = await newUpload.save() 
-
-         const uploadChunkDir = join(this.chunksDir, uploadId);
-            if (!existsSync(uploadChunkDir)) {
-              mkdirSync(uploadChunkDir, { recursive: true });
-            }
+        const uploadChunkDir = join(this.chunksDir, uploadId);
+        if (!existsSync(uploadChunkDir)) {
+            mkdirSync(uploadChunkDir, { recursive: true });
+        }
         
-        return newUpload?.uploadId;
-
+        return newUpload.uploadId;
     }
 
-    async createNewFolder(folderName:string, parentId?: string, folderSize?: number): Promise<UploadDocument> { 
-        return await this.fileFolderRepository.createFolder(folderName, parentId, folderSize)
+    async createNewFolder(folderName: string, parentId?: string, folderSize?: number): Promise<UploadDocument> { 
+        return await this.fileFolderRepository.createFolder(folderName, parentId, folderSize);
     }
 
-async uploadChunk(uploadId: string, chunkIndex: number, chunkBuffer: Buffer): Promise<void> {
-    const uploadSession = await this.fileFolderRepository.findFolderByUploadId(uploadId) 
+    async uploadChunk(uploadId: string, chunkIndex: number, chunkBuffer: Buffer): Promise<void> {
+        const uploadSession = await this.fileFolderRepository.findFolderByUploadId(uploadId);
 
-    if (!uploadSession) {
-        throw new NotFoundException('Upload session not found');
-    }
-
-    if (chunkIndex < 0 || chunkIndex >= uploadSession?.totalChunks) {
-        throw new BadRequestException('Invalid chunk index');
-    }
-
-    // Save chunk to disk
-    const chunkPath = join(this.chunksDir, uploadId, `chunk-${chunkIndex}`);
-    writeFileSync(chunkPath, chunkBuffer);
-    
-    // **FIX: Only add chunk if it doesn't already exist**
-    let newChunkList = uploadSession.uploadedChunks || [];
-    if (!newChunkList.includes(chunkIndex)) {
-        newChunkList = [...newChunkList, chunkIndex].sort((a, b) => a - b); // Keep sorted
-    }
-    
-    const updatedUploadSession = uploadSession.toBuilder()
-        .setUploadedChunks(newChunkList)
-        .setLastActivity(new Date())
-        .build()
-
-    await this.fileFolderRepository.update(uploadSession._id, updatedUploadSession)
-    
-    if(newChunkList?.length == uploadSession.totalChunks){
-        await this.completeUpload(uploadId)
-    }
-}
-
-    async getUploadStatus(uploadId: string) {
-        let uploadSession = await this.fileFolderRepository.findFolderByUploadId(uploadId)
-        uploadSession = uploadSession?.toObject() as UploadDocument
-        if(!uploadSession){
+        if (!uploadSession) {
             throw new NotFoundException('Upload session not found');
         }
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+
+        if (chunkIndex < 0 || chunkIndex >= uploadSession.totalChunks) {
+            throw new BadRequestException('Invalid chunk index');
+        }
+
+        // Save chunk to disk
+        const chunkPath = join(this.chunksDir, uploadId, `chunk-${chunkIndex}`);
+        writeFileSync(chunkPath, chunkBuffer);
+        
+        // Only add chunk if it doesn't already exist
+        let newChunkList = uploadSession.uploadedChunks || [];
+        if (!newChunkList.includes(chunkIndex)) {
+            newChunkList = [...newChunkList, chunkIndex].sort((a, b) => a - b);
+        }
+        
+        const updatedUploadSession = uploadSession.toBuilder()
+            .setUploadedChunks(newChunkList)
+            .setLastActivity(new Date())
+            .build();
+
+        await this.fileFolderRepository.update(uploadSession._id, updatedUploadSession);
+        
+        if (newChunkList.length === uploadSession.totalChunks) {
+            await this.completeUpload(uploadId);
+        }
+    }
+
+    async getUploadStatus(uploadId: string) {
+        let uploadSession = await this.fileFolderRepository.findFolderByUploadId(uploadId);
+        uploadSession = uploadSession?.toObject() as UploadDocument;
+        
+        if (!uploadSession) {
+            throw new NotFoundException('Upload session not found');
+        }
+        
         return {
             ...uploadSession,
-            progress: ((uploadSession?.uploadedChunks?.length ?? 0) / (uploadSession?.totalChunks ?? 0)) * 100,
-            isComplete: uploadSession?.uploadedChunks?.length === uploadSession?.totalChunks
-        }
+            progress: ((uploadSession.uploadedChunks?.length ?? 0) / (uploadSession.totalChunks ?? 1)) * 100,
+            isComplete: uploadSession.uploadedChunks?.length === uploadSession.totalChunks
+        };
     }
 
     async completeUpload(uploadId: string): Promise<string> {
-        const session = await this.fileFolderRepository.findFolderByUploadId(uploadId)
+        const session = await this.fileFolderRepository.findFolderByUploadId(uploadId);
+        
         if (!session) {
             throw new NotFoundException('Upload session not found');
         }
@@ -170,20 +181,21 @@ async uploadChunk(uploadId: string, chunkIndex: number, chunkBuffer: Buffer): Pr
         }
         
         // Merge chunks
-        const folderArray = session.fileName.split('/')
-        if(folderArray.length > 1) {
-            const folderPath = join(this.uploadDir, folderArray.slice(0, folderArray.length - 1).join('/'))
+        const folderArray = session.fileName.split('/');
+        if (folderArray.length > 1) {
+            const folderPath = join(this.uploadDir, folderArray.slice(0, folderArray.length - 1).join('/'));
             if (!existsSync(folderPath)) {
                 mkdirSync(folderPath, { recursive: true });
             }
         }
+        
         const finalFilePath = join(this.uploadDir, session.fileName);
         const isExistingFile = existsSync(finalFilePath);
 
         if (isExistingFile) {
             unlinkSync(finalFilePath);
-
         }
+        
         const writeStream = createWriteStream(finalFilePath);
 
         for (let i = 0; i < session.totalChunks; i++) {
@@ -202,124 +214,115 @@ async uploadChunk(uploadId: string, chunkIndex: number, chunkBuffer: Buffer): Pr
 
         // Cleanup chunks
         this.cleanupChunks(uploadId);
-        
 
         return finalFilePath;
     }
 
     async cancelUpload(uploadId: string) {
-        const session = await this.fileFolderRepository.findFolderByUploadId(uploadId)
+        const session = await this.fileFolderRepository.findFolderByUploadId(uploadId);
+        
         if (!session) {
             throw new NotFoundException('Upload session not found');
         }
-        await this.resetParentFolderSizes([uploadId])
+        
+        await this.resetParentFolderSizes([uploadId]);
         this.cleanupChunks(uploadId);
+        
+        // Delete all children recursively
         await this.fileFolderRepository.deleteMany({
             parents: session._id
-        })
-        await this.fileFolderRepository.deleteOne(session._id)
+        });
+        
+        await this.fileFolderRepository.deleteOne(session._id);
     }
 
     private cleanupChunks(uploadId: string): void {
         const uploadChunkDir = join(this.chunksDir, uploadId);
         if (existsSync(uploadChunkDir)) {
-            const chunks = readdirSync(uploadChunkDir);
-            chunks.forEach((chunk) => {
-                unlinkSync(join(uploadChunkDir, chunk));
-            });
-            // Use rmSync or rmdirSync instead of unlinkSync for directories
             rmSync(uploadChunkDir, { recursive: true, force: true });
-            // Alternative for older Node versions:
-            // rmdirSync(uploadChunkDir);
         }
     }
 
-    private startCleanupInterval(): void {
-        setInterval(
-            () => {
-                const now = new Date().getTime();
-                const folder = join(this.metaDataDir);
-                for (const file of folder) {
-                    const fileContentRaw = readFileSync(join(this.metaDataDir, `${file}`), "utf-8");
-                    const fileContent = JSON.parse(fileContentRaw) as UploadSession;
-                    if (now - fileContent.lastActivity.getTime() > this.sessionTimeout) {
-                        this.cleanupChunks(fileContent.uploadId);
-                        //  unlinkSync(join(this.metaDataDir, `${file}`));
-                    }
-                }
-            },
-            60 * 60 * 1000,
-        ); // Run every hour
-    }
-
     async getAllUploads() {
-        const allUploadSessions = await this.fileFolderRepository.find({})
-        return allUploadSessions?.filter((session) => session.uploadedChunks?.length === session.totalChunks && session.parents.length === 0)
+        const allUploadSessions = await this.fileFolderRepository.findRootItems();
+        return allUploadSessions.filter((session) => 
+            session.uploadedChunks?.length === session.totalChunks
+        );
     }
 
-    async getAllUploadsUnderFolder(parentId: string){
-        const all = await this.fileFolderRepository.find({})
-        console.log("all", all);
-        const allUploadSessions = await this.fileFolderRepository.find({parents:parentId})
-        return allUploadSessions?.filter((session) => session.uploadedChunks?.length === session.totalChunks)
+    async getAllUploadsUnderFolder(parentId: string) {
+        // Find all files/folders where the direct parent (last element in parents array) matches parentId
+        const allUploadSessions = await this.fileFolderRepository.findDirectChildren(parentId);
+        
+        return allUploadSessions.filter((session) => 
+            session.uploadedChunks?.length === session.totalChunks
+        );
     }
 
-    async deleteAllUploadedFiles(uploadIds:string[]) {
-        await this.resetParentFolderSizes(uploadIds)
+    async deleteAllUploadedFiles(uploadIds: string[]) {
+        await this.resetParentFolderSizes(uploadIds);
+        
         await this.fileFolderRepository.deleteMany({
             uploadId: { $in: uploadIds }
-        })
-        // remove every thing in chunks dir
+        });
+        
+        // Remove everything in chunks dir
         const dir = join(this.chunksDir);
         if (existsSync(dir)) {
             rmSync(dir, { recursive: true, force: true });
         }
 
-        if(existsSync(this.uploadDir)){
+        if (existsSync(this.uploadDir)) {
             rmSync(this.uploadDir, { recursive: true, force: true });
-        }   
+        }
+        
         return {
             success: true,
             message: 'All uploads cancelled',
         };
     }
 
-
-    async resetParentFolderSizes(uploadIds: string[]){
-        for(const uploadId of uploadIds){
-            const currentlyDeletedFileOrFolder = await this.fileFolderRepository.findFolderByUploadId(uploadId)
-            if(currentlyDeletedFileOrFolder && currentlyDeletedFileOrFolder?.parents && currentlyDeletedFileOrFolder?.parents?.length > 0){
-                 for(const parent of currentlyDeletedFileOrFolder.parents){
-                    const parentFolder = await this.fileFolderRepository.findById(parent)
-                    if(!parentFolder) continue
-                    const parentFolderBuilder = parentFolder.toBuilder()
-                    parentFolderBuilder.setFileSize(parentFolder.fileSize - currentlyDeletedFileOrFolder.fileSize)
-                    await this.fileFolderRepository.update(parentFolder._id,parentFolderBuilder.build())
-                 }
+    async resetParentFolderSizes(uploadIds: string[]) {
+        for (const uploadId of uploadIds) {
+            const currentlyDeletedFileOrFolder = await this.fileFolderRepository.findFolderByUploadId(uploadId);
+            
+            if (currentlyDeletedFileOrFolder && currentlyDeletedFileOrFolder.parents && currentlyDeletedFileOrFolder.parents.length > 0) {
+                for (const parent of currentlyDeletedFileOrFolder.parents) {
+                    const parentFolder = await this.fileFolderRepository.findById(parent);
+                    if (!parentFolder) continue;
+                    
+                    const parentFolderBuilder = parentFolder.toBuilder();
+                    parentFolderBuilder.setFileSize(Math.max(0, parentFolder.fileSize - currentlyDeletedFileOrFolder.fileSize));
+                    await this.fileFolderRepository.update(parentFolder._id, parentFolderBuilder.build());
+                }
             }
-        } 
+        }
     }
 
-    async pauseCurrentChunkUpload(uploadId: string, currentChunk:number) {
-        const session = await this.fileFolderRepository.findFolderByUploadId(uploadId)
+    async pauseCurrentChunkUpload(uploadId: string, currentChunk: number) {
+        const session = await this.fileFolderRepository.findFolderByUploadId(uploadId);
+        
         if (!session) {
             throw new NotFoundException('Upload session not found');
         }
 
-        // delete the chunk fi exists 
+        // Delete the chunk if it exists
         const chunkPath = join(this.chunksDir, uploadId, `chunk-${currentChunk}`);
-        if(existsSync(chunkPath)){
+        if (existsSync(chunkPath)) {
             unlinkSync(chunkPath);
         }
-        let sessionBuilder = session.toBuilder()
-        // check if provided chunk is updated in db 
-        if(session.uploadedChunks?.includes(currentChunk)){
-            // remove duplicate chunk index
-            const unique = session.uploadedChunks.filter((item, index) => (session.uploadedChunks.indexOf(item) === index) || item !== currentChunk);
-            sessionBuilder = sessionBuilder.setUploadedChunks(unique)
+        
+        let sessionBuilder = session.toBuilder();
+        
+        // Check if provided chunk is in the uploaded chunks list
+        if (session.uploadedChunks?.includes(currentChunk)) {
+            // Remove the chunk index
+            const unique = session.uploadedChunks.filter(item => item !== currentChunk);
+            sessionBuilder = sessionBuilder.setUploadedChunks(unique);
         }
         
-        await this.fileFolderRepository.update(session._id,sessionBuilder.build())
+        await this.fileFolderRepository.update(session._id, sessionBuilder.build());
+        
         return {
             success: true,
             message: 'Upload paused successfully',

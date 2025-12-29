@@ -81,7 +81,7 @@ const FileFolderTable = (props: Props) => {
                 )
               } 
             </Table.Td>
-            <Table.Td>{file.fileName}</Table.Td>
+            <Table.Td>{file.fileName?.split("/").pop()}</Table.Td>
             <Table.Td>{formatBytes(file.fileSize)}</Table.Td>
             <Table.Td>
               {getShortDate(file?.createdAt as unknown as string)}
