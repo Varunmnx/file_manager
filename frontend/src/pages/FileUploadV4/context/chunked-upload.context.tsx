@@ -64,6 +64,8 @@ interface ChunkedUploadContextValue {
   refetchFilesAndFolders: () => void;
   folderList: FolderItem[];
   setFolderList: React.Dispatch<React.SetStateAction<FolderItem[]>>;
+  fileDetails: UploadedFile | undefined;
+  setFileDetails: React.Dispatch<React.SetStateAction<UploadedFile | undefined>>;
 }
 
 interface ChunkedUploadProviderProps {
@@ -87,6 +89,7 @@ export function ChunkedUploadProvider({
   const isUploadingRef = useRef(false);
   const [uploadQueue, setUploadQueue] = useState<UploadQueueState[]>([]);
   const [folderList,setFolderList] = useState<FolderItem[]>([]);
+  const [fileDetails, setFileDetails] = useState<UploadedFile>();
   const {
     data: allFilesAndFolders,
     isLoading,
@@ -585,7 +588,9 @@ export function ChunkedUploadProvider({
     isLoading,
     refetchFilesAndFolders,
     folderList,
-    setFolderList
+    setFolderList,
+    fileDetails,
+    setFileDetails
   };
 
   return <ChunkedUploadContext value={value}>{children}</ChunkedUploadContext>;

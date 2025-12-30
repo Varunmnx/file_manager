@@ -150,7 +150,7 @@ const ResourceUploadModal = ({ opened, close, initialFiles = [] }: Props) => {
 
   const onStartUpload = useCallback(
     async (tree: FileTreeItem[]) => {
-      setIsLoading(true);
+      setIsLoading(true); 
       let uploadQueueState: UploadQueueState[] = [];
       const files: FileItemWithParentId[] = [];
       
@@ -172,6 +172,7 @@ const ResourceUploadModal = ({ opened, close, initialFiles = [] }: Props) => {
           uploadQueueState = filesWithIsPaused;
           
           if (folderId) {
+            // eslint-disable-next-line no-unsafe-optional-chaining
             files.push(...rootORFolder.children?.map((item) => ({ 
               ...item, 
               parentId: [folderId as string] 
@@ -189,6 +190,14 @@ const ResourceUploadModal = ({ opened, close, initialFiles = [] }: Props) => {
             folderName: (rootORFolder as FolderItem).name,
             parent: folderId,
             folderSize: 0,
+          },{
+            onError: (error) => {
+              if(error?.status == 409){
+                  
+                toast.error("Duplicate folder name found in this location ");
+                setIsLoading(false); 
+              }
+            }
           });
           
           if (data?.uploadId) {
@@ -213,6 +222,7 @@ const ResourceUploadModal = ({ opened, close, initialFiles = [] }: Props) => {
             }));
             setUploadQueue(uploadQueueState);
           } else {
+            console.log("folder not created");
             toast.error("Failed to create folder");
           }
         }
@@ -225,6 +235,7 @@ const ResourceUploadModal = ({ opened, close, initialFiles = [] }: Props) => {
       );
      
       folderPathAgainstFiles.clear();
+      setIsLoading(false);
       close();
     },
     [close, createFolderMutation, folderId, folderPathAgainstFiles, processFolders, setUploadQueue],

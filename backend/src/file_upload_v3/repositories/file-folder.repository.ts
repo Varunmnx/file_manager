@@ -89,10 +89,10 @@ async createFolder(folderName: string, parentId?: string, folderSize?: number): 
         throw new BadRequestException('Parent must be a folder');
       }
 
-      // ✅ Recursively build full ancestor path
-      parents = await this.buildFullParentPath(parentIdObj);
+      //  Recursively build full ancestor path
+      parents = [...parentFolder.parents, parentIdObj];
 
-      // ✅ Update all ancestors (including direct parent) with new folder size
+      //  Update all ancestors (including direct parent) with new folder size
       for (const ancestorId of parents) {
         const ancestor = await this.findById(ancestorId);
         if (ancestor && ancestor.isFolder) {
@@ -103,7 +103,7 @@ async createFolder(folderName: string, parentId?: string, folderSize?: number): 
       }
     }
 
-    // ✅ Prevent duplicate folder names in same parent context
+    //  Prevent duplicate folder names in same parent context
     const query: QueryFilter<UploadDocument> = {
       fileName: folderName.trim(),
       isFolder: true,
@@ -131,7 +131,7 @@ async createFolder(folderName: string, parentId?: string, folderSize?: number): 
       chunkSize: 0,
       totalChunks: 0,
       fileSize: folderSize ?? 0,
-      isFolder: true,
+      isFolder: true
     });
 
     return newFolder;

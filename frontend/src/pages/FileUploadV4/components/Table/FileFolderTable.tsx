@@ -5,7 +5,10 @@ import { FileTypeIconMapKeys } from "@/utils/fileTypeIcons";
 import { checkAndRetrieveExtension } from "../../utils/getFileIcon";
 import { formatBytes } from "@/utils/formatBytes";
 import { getShortDate } from "@/utils/getDateTime";
-import { IconFolder } from "@tabler/icons-react";
+import { IconFolder, IconInfoCircle } from "@tabler/icons-react";
+import { MouseEvent } from "react";
+import useFileGetStatus from "../../hooks/useFileGetStatus";
+import { useChunkedUpload } from "../../context/chunked-upload.context";
 const TrashIcon = "https://www.svgrepo.com/show/533014/trash-blank.svg";
 
 interface Props {
@@ -29,6 +32,22 @@ const FileFolderTable = (props: Props) => {
     data,
     onFileFolderRowClick
   } = props;
+
+  const getFileDetailsMutation = useFileGetStatus()
+  const {setFileDetails} = useChunkedUpload()
+
+  function handleMoreInformation(e: MouseEvent<SVGSVGElement, MouseEvent>, id:string) {
+    e.stopPropagation();
+    e.preventDefault();
+    console.log(id)
+    getFileDetailsMutation.mutate(id,{
+
+      onSuccess: (data) => {
+        console.log(data)
+        setFileDetails(data)
+      }
+    })
+  }
 
   return (
     <Table highlightOnHover verticalSpacing="md">
@@ -81,8 +100,8 @@ const FileFolderTable = (props: Props) => {
                 )
               } 
             </Table.Td>
-            <Table.Td>{file.fileName?.split("/").pop()}</Table.Td>
-            <Table.Td>{formatBytes(file.fileSize)}</Table.Td>
+            <Table.Td>{file.fileName?.split("/").pop()} </Table.Td>
+            <Table.Td className="flex items-center justify-start gap-20">{formatBytes(file.fileSize)}  <IconInfoCircle className="cursor-pointer" onClick={(e)=>handleMoreInformation(e as any ,file._id  as string)} size={16}/></Table.Td>
             <Table.Td>
               {getShortDate(file?.createdAt as unknown as string)}
             </Table.Td>

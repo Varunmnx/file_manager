@@ -95,7 +95,7 @@ export class UploadPoolService {
             }
             
             // Set the complete lineage in the upload entity
-            fullParentLineage = await this.fileFolderRepository.buildFullParentPath(toObjectId(directParentId));
+            // fullParentLineage = await this.fileFolderRepository.buildFullParentPath(toObjectId(directParentId));
             uploadStatus.setParents(fullParentLineage);
         }
 

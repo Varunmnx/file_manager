@@ -9,44 +9,44 @@ import LiveFileUploadController from "./components/LiveFileUploadController";
 import { useChunkedUpload } from "./context/chunked-upload.context";
 import useDeleteAll from "./hooks/useDeleteAll";
 import CreateFolderModal from "./components/Modal/CreateFolderModal";
-import useCreateFolder from "./hooks/createFolder"; 
+import useCreateFolder from "./hooks/createFolder";
 import { useNavigate, useParams } from "react-router-dom";
 import { useDragAndDrop } from "./hooks/useDragDrop";
 import useFileGetStatus from "./hooks/useFileGetStatus";
+import FileDetailsCard from "./components/FileDetailsCard";
 
 const Page = () => {
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const { folderId } = useParams();
-  
+
   const {
     uploadQueue,
     allFilesAndFolders: data,
     refetchFilesAndFolders: refetch,
     isLoading,
-  } = useChunkedUpload(); 
-  const getUploadStatusMutation = useFileGetStatus()
-  
+    fileDetails,
+  } = useChunkedUpload();
+  const getUploadStatusMutation = useFileGetStatus();
+
   const [opened, { open, close }] = useDisclosure(false);
   const [
     isCreateNewFolderOpened,
     { open: openCreateNewFolder, close: closeCreateNewFolder },
   ] = useDisclosure(false);
-  
+
   const deleteAllMutation = useDeleteAll();
   const createFolderMutation = useCreateFolder();
-  
+
   const { isDragging } = useDragAndDrop({});
 
-
   useEffect(() => {
-    if(isDragging)open()
+    if (isDragging) open();
   }, [isDragging]);
-
 
   useEffect(() => {
     if (folderId) {
-      getUploadStatusMutation.mutate(folderId)
+      getUploadStatusMutation.mutate(folderId);
     }
   }, [folderId]);
 
@@ -116,11 +116,11 @@ const Page = () => {
     }
   };
 
-    useEffect(() => {
-    if(uploadQueue.filter(item=>item.status == "uploading").length == 0){
-      refetch()
+  useEffect(() => {
+    if (uploadQueue.filter((item) => item.status == "uploading").length == 0) {
+      refetch();
     }
-  },[refetch, uploadQueue])
+  }, [refetch, uploadQueue]);
   const allSelected =
     (data?.length ?? 0) > 0 && selectedFiles.size === data?.length;
   const indeterminate =
@@ -130,39 +130,18 @@ const Page = () => {
     return <div>Loading...</div>;
   }
 
+  console.log("fileDetails", fileDetails);
+
   return (
     <div className="w-screen h-screen flex justify-center relative overflow-x-hidden overflow-y-scroll">
-      {/* Drag overlay */}
-      {/* {isDragging && (
-        <div className="fixed inset-0 bg-blue-500/20 backdrop-blur-sm z-40 flex items-center justify-center pointer-events-none">
-          <div className="bg-white rounded-lg shadow-xl p-8 border-2 border-blue-500 border-dashed">
-            <svg
-              className="mx-auto h-16 w-16 text-blue-500 mb-4"
-              stroke="currentColor"
-              fill="none"
-              viewBox="0 0 48 48"
-            >
-              <path
-                d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <p className="text-xl font-semibold text-blue-600">
-              Drop files anywhere to upload
-            </p>
-          </div>
-        </div>
-      )} */}
-
-      {(opened) && (
-        <ResourceUploadModal 
-          opened={(opened)} 
-          close={handleModalClose}
-          initialFiles={droppedFiles}
-        />
-      )}
+      {fileDetails && <FileDetailsCard />}
+      {opened && (
+          <ResourceUploadModal
+            opened={opened}
+            close={handleModalClose}
+            initialFiles={droppedFiles}
+          />
+        )}
       {isCreateNewFolderOpened && (
         <CreateFolderModal
           onSubmit={handleCreateNewFolder}
@@ -170,10 +149,17 @@ const Page = () => {
           close={closeCreateNewFolder}
         />
       )}
-      { <LiveFileUploadController />}
+      {
+        uploadQueue?.filter((file) => {
+          return (
+            file.status == "uploading" ||
+            file.status == "paused" ||
+            file.status == "initiating" ||
+            file.status == "idle"
+          );
+        })?.length > 0 &&<LiveFileUploadController />}
       <div className="w-3/4 py-8">
         <Flex justify={"right"} align={"center"}>
-          
           <ToggleMenu
             deleteAllUploads={deleteAllUploads}
             onResourceUpload={open}
@@ -181,7 +167,22 @@ const Page = () => {
           />
         </Flex>
         {
-          folderId ? <FileFolderLocation folderIds={ folderId ?( getUploadStatusMutation.data?.parents ?? []) : []} /> : <h1>F Manager</h1>
+          // eslint-disable-next-line no-constant-binary-expression, no-unsafe-optional-chaining
+          folderId ? (
+            <FileFolderLocation
+              folderIds={
+                folderId
+                  ? // eslint-disable-next-line no-constant-binary-expression
+                    ([
+                      ...(getUploadStatusMutation.data?.parents ?? []),
+                      folderId,
+                    ] ?? [])
+                  : []
+              }
+            />
+          ) : (
+            <h1>F Manager</h1>
+          )
         }
         <div className="mt-10" />
         <FileFolderTable
@@ -199,18 +200,15 @@ const Page = () => {
   );
 };
 
-const FileFolderLocation = ({folderIds}: {folderIds: string[]})=>{
-
+const FileFolderLocation = ({ folderIds }: { folderIds: string[] }) => {
   return (
     <Breadcrumbs>
       <Anchor href="/">Home</Anchor>
-      {
-        folderIds.map((folderId: string) => (
-          <Anchor href={`/${folderId}`}>{folderId}</Anchor>
-        ))
-      }
+      {folderIds.map((folderId: string) => (
+        <Anchor href={`/${folderId}`}>{folderId}</Anchor>
+      ))}
     </Breadcrumbs>
-  )
-}
+  );
+};
 
 export default Page;
