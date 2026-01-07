@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export function formatDate(isoString:string, options = {}) {
   // Error handling
   if (!isoString) {
@@ -64,7 +65,7 @@ export function formatDate(isoString:string, options = {}) {
       });
       
     case 'relative':
-      return getRelativeTime(date);
+      return getRelativeTime(date as unknown as number);
       
     default:
       return date.toLocaleString(config.locale);

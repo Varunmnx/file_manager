@@ -192,7 +192,8 @@ const ResourceUploadModal = ({ opened, close, initialFiles = [] }: Props) => {
             folderSize: 0,
           },{
             onError: (error) => {
-              if(error?.status == 409){
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              if((error as unknown as any)?.status == 409){
                   
                 toast.error("Duplicate folder name found in this location ");
                 setIsLoading(false); 

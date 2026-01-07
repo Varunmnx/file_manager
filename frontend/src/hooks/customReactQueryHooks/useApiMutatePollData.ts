@@ -14,6 +14,7 @@ class ApiResponse<T> {
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import useApiMutateData, { MutationOptionsType } from "./useApiMutateData";
+import { useQueryClient } from "@tanstack/react-query";
 
 /* 
   Data represents the data type that the query function will return.
@@ -30,6 +31,7 @@ const useApiMutatePollData = <Data, Body = any>(
 ) => {
   // timout IDs References
   const pollTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const client = useQueryClient();
   const [apiRawData, setApiRawData] = useState<
     ApiResponse<Data>["raw"] | undefined
   >(undefined);
@@ -41,7 +43,7 @@ const useApiMutatePollData = <Data, Body = any>(
       const polledResponse = new Promise<Data>((resolve, reject) => {
         const sendHTTPRequest = async () => {
           try {
-            const response = await options.mutationFn?.(body);
+            const response = await options.mutationFn?.(body,{client,meta:undefined});
             setApiRawData(response?.raw);
 
             if (response?.raw.status === 202) {

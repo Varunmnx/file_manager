@@ -25,7 +25,8 @@ export class SocketAdapterImpl implements SocketAdapter {
   private _onDisConnectCallback:
     | (<T>(socketAdapter: SocketAdapter, data: T) => void)
     | null;
-  private _onErrorCallback:
+
+   _onErrorCallback:
     | (<T>(socketAdapter: SocketAdapter, data: T) => void)
     | null;
 
@@ -33,7 +34,7 @@ export class SocketAdapterImpl implements SocketAdapter {
     console.log("==================================== socket uri");
     console.log(uri);
     console.log("==================================== socket uri");
-    const accessToken = loadString(StorageKeys.TOKEN);
+    const accessToken = loadString(StorageKeys.TOKEN); 
 
     if (accessToken) {
       extraHeaders["authorization"] = `Bearer ${accessToken}`;

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Checkbox, Table, ActionIcon } from "@mantine/core";
 import Icon from "@/components/Icon";
 import { UploadedFile } from "@/types/file.types";

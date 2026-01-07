@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState } from 'react';
 
 interface UseDragAndDropOptions {
@@ -6,8 +7,7 @@ interface UseDragAndDropOptions {
 }
 
 export const useDragAndDrop = ({ onFilesDropped, enabled = true }: UseDragAndDropOptions) => {
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragCounter, setDragCounter] = useState(0);
+  const [isDragging, setIsDragging] = useState(false); 
 
   useEffect(() => {
     if (!enabled) return;
@@ -16,7 +16,7 @@ export const useDragAndDrop = ({ onFilesDropped, enabled = true }: UseDragAndDro
       e.preventDefault();
       e.stopPropagation();
       
-      setDragCounter(prev => prev + 1);
+      // setDragCounter(prev => prev + 1);
       
       if (e.dataTransfer?.items && e.dataTransfer.items.length > 0) {
         setIsDragging(true);
@@ -27,13 +27,13 @@ export const useDragAndDrop = ({ onFilesDropped, enabled = true }: UseDragAndDro
       e.preventDefault();
       e.stopPropagation();
       
-      setDragCounter(prev => {
-        const newCount = prev - 1;
-        if (newCount === 0) {
-          setIsDragging(false);
-        }
-        return newCount;
-      });
+      // setDragCounter(prev => {
+      //   const newCount = prev - 1;
+      //   if (newCount === 0) {
+      //     setIsDragging(false);
+      //   }
+      //   return newCount;
+      // });
     };
 
     const handleDragOver = (e: DragEvent) => {
@@ -46,7 +46,7 @@ export const useDragAndDrop = ({ onFilesDropped, enabled = true }: UseDragAndDro
       e.stopPropagation();
       
       setIsDragging(false);
-      setDragCounter(0);
+      // setDragCounter(0);
 
       const files: File[] = [];
       const items = e.dataTransfer?.items;

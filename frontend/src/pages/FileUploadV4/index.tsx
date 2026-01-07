@@ -38,17 +38,21 @@ const Page = () => {
   const deleteAllMutation = useDeleteAll();
   const createFolderMutation = useCreateFolder();
 
-  const { isDragging } = useDragAndDrop({});
+  const { isDragging } = useDragAndDrop({
+    onFilesDropped: (files) =>{
+      console.log(files)
+    }
+  });
 
   useEffect(() => {
     if (isDragging) open();
-  }, [isDragging]);
+  }, [isDragging, open]);
 
   useEffect(() => {
     if (folderId) {
       getUploadStatusMutation.mutate(folderId);
     }
-  }, [folderId]);
+  }, [folderId, getUploadStatusMutation]);
 
   // Close the modal and clear dropped files when modal is closed
   const handleModalClose = () => {
@@ -174,9 +178,10 @@ const Page = () => {
                 folderId
                   ? // eslint-disable-next-line no-constant-binary-expression
                     ([
-                      ...(getUploadStatusMutation.data?.parents ?? []),
+                      // eslint-disable-next-line no-unsafe-optional-chaining
+                      ...(getUploadStatusMutation.data?.parents as string[]),
                       folderId,
-                    ] ?? [])
+                    ] )
                   : []
               }
             />

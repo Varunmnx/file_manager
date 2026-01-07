@@ -3,12 +3,12 @@ import { useRef, useState, useEffect } from "react";
 
 interface Props {
     isMinimized: boolean;
-    setIsMinimized: (isMinimized: boolean) => void;
+    setIsMinimized?: (isMinimized: boolean) => void;
     children?: React.ReactNode;
     width?: string;
 }
 
-const DraggableBox = ({isMinimized, setIsMinimized, children, width}:Props) => {
+const DraggableBox = ({isMinimized, children, width}:Props) => {
   const [position, setPosition] = useState({
     x: 20,
     y: window.innerHeight - 420,

@@ -1,12 +1,8 @@
 // src/router/public-routes.tsx
 
 import GlobalErrorHandlerContextProvider from "@/context/globalErrorHandlerContext/globalErrorHandlerContextProvider";
-import RootLayout from "@/Layout/ExampleLayout";
-import ChunkedUploader from "@/pages/ChunkedUpload";
-import ErrorPage from "@/pages/Error";
-import FileUploadApp from "@/pages/FileUpload";
-import FixedChunkedUpload from "@/pages/FileUploadChunked";
-import FileUploadV3 from "@/pages/FileUploadChunkedV3";
+import RootLayout from "@/Layout/ExampleLayout"; 
+import ErrorPage from "@/pages/Error"; 
 import FileUploadV4 from "@/pages/FileUploadV4";
 import { ChunkedUploadProvider } from "@/pages/FileUploadV4/context/chunked-upload.context";
 // import LandingPage from "@/pages/Landing";
