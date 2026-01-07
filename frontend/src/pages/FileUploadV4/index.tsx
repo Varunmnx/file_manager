@@ -14,6 +14,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useDragAndDrop } from "./hooks/useDragDrop";
 import useFileGetStatus from "./hooks/useFileGetStatus";
 import FileDetailsCard from "./components/FileDetailsCard";
+import { API, Slug } from "@/services";
 
 const Page = () => {
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
@@ -136,9 +137,18 @@ const Page = () => {
 
   console.log("fileDetails", fileDetails);
 
+  async function handleLogin(){
+    await API.get({
+       slug: "/auth/google"
+    })
+  }
+
   return (
     <div className="w-screen h-screen flex justify-center relative overflow-x-hidden overflow-y-scroll">
       {fileDetails && <FileDetailsCard />}
+<button onClick={() => window.location.href = 'http://localhost:3000/auth/google'}>
+  Sign in with Google
+</button>
       {opened && (
           <ResourceUploadModal
             opened={opened}

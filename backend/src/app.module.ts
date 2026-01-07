@@ -5,15 +5,26 @@ import { UploadModule } from './file_upload_v3/file_upload_v3.module';
 import { MulterModule } from '@nestjs/platform-express';
 import { MongooseModule, MongooseModuleFactoryOptions } from '@nestjs/mongoose';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { UploadSchema } from './file_upload_v3/entities/upload-status.entity';
-import { EntityNames } from './db/entity-names';
+import { AuthModule } from './auth/auth.module';
+import { JwtModule } from '@nestjs/jwt';
 
 @Module({
   imports: [
     UploadModule,
+    AuthModule,
     ConfigModule.forRoot({ isGlobal: true }),
     MulterModule.register({
       dest: './uploads/temp',
+    }),
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.getOrThrow('JWT_SECRET'),
+        signOptions: {
+          expiresIn: '1d',
+        },
+      }),
+      inject: [ConfigService],
     }),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
@@ -21,7 +32,7 @@ import { EntityNames } from './db/entity-names';
         uri: configService.get<string>('MONGODB_URL'),
       }),
       inject: [ConfigService],
-    })
+    }),
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -5,6 +5,7 @@ import RootLayout from "@/Layout/ExampleLayout";
 import ErrorPage from "@/pages/Error"; 
 import FileUploadV4 from "@/pages/FileUploadV4";
 import { ChunkedUploadProvider } from "@/pages/FileUploadV4/context/chunked-upload.context";
+import GoogleLogin from "@/pages/google";
 // import LandingPage from "@/pages/Landing";
 import { RouteObject, useRoutes } from "react-router-dom";
 
@@ -35,6 +36,10 @@ export const publicRoutes: RouteObject[] = [
         path: Path.ROOT + '/:folderId',
         element: <ChunkedUploadProvider><FileUploadV4 /></ChunkedUploadProvider>,
 
+      },
+      {
+        path: Path.ROOT + "/auth/google/callback",
+        element: <GoogleLogin/>,
       }
     ],
   },
