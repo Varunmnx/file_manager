@@ -1,7 +1,6 @@
 import { UploadedFile } from "@/types/file.types";
 import { useEffect, useState } from "react";
-import FileFolderTable from "./components/Table/FileFolderTable";
-import ToggleMenu from "./components/Menu";
+import FileFolderTable from "./components/Table/FileFolderTable"; 
 import { Anchor, Breadcrumbs, Flex } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import ResourceUploadModal from "./components/Modal/ResourceUploadModal";
@@ -13,8 +12,9 @@ import useCreateFolder from "./hooks/createFolder";
 import { useNavigate, useParams } from "react-router-dom";
 import { useDragAndDrop } from "./hooks/useDragDrop";
 import useFileGetStatus from "./hooks/useFileGetStatus";
-import FileDetailsCard from "./components/FileDetailsCard";
-import { API, Slug } from "@/services";
+import FileDetailsCard from "./components/FileDetailsCard"; 
+import Profile from "./components/Profile";
+
 
 const Page = () => {
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
@@ -29,7 +29,7 @@ const Page = () => {
     fileDetails,
   } = useChunkedUpload();
   const getUploadStatusMutation = useFileGetStatus();
-
+  
   const [opened, { open, close }] = useDisclosure(false);
   const [
     isCreateNewFolderOpened,
@@ -53,7 +53,7 @@ const Page = () => {
     if (folderId) {
       getUploadStatusMutation.mutate(folderId);
     }
-  }, [folderId, getUploadStatusMutation]);
+  }, [folderId]);
 
   // Close the modal and clear dropped files when modal is closed
   const handleModalClose = () => {
@@ -131,24 +131,22 @@ const Page = () => {
   const indeterminate =
     selectedFiles.size > 0 && selectedFiles.size < (data?.length || 0);
 
+
+    function getParents(){
+      if(getUploadStatusMutation.data?.parents && getUploadStatusMutation.data.parents.length > 0){
+        return getUploadStatusMutation.data?.parents
+      }
+      return []
+    }
+
   if (isLoading || deleteAllMutation.isPending) {
-    return <div>Loading...</div>;
+    return (<div>{"Loading..."}</div>)
   }
 
-  console.log("fileDetails", fileDetails);
-
-  async function handleLogin(){
-    await API.get({
-       slug: "/auth/google"
-    })
-  }
 
   return (
     <div className="w-screen h-screen flex justify-center relative overflow-x-hidden overflow-y-scroll">
       {fileDetails && <FileDetailsCard />}
-<button onClick={() => window.location.href = 'http://localhost:3000/auth/google'}>
-  Sign in with Google
-</button>
       {opened && (
           <ResourceUploadModal
             opened={opened}
@@ -174,11 +172,9 @@ const Page = () => {
         })?.length > 0 &&<LiveFileUploadController />}
       <div className="w-3/4 py-8">
         <Flex justify={"right"} align={"center"}>
-          <ToggleMenu
-            deleteAllUploads={deleteAllUploads}
+          <Profile  deleteAllUploads={deleteAllUploads}
             onResourceUpload={open}
-            openCreateNewFolder={openCreateNewFolder}
-          />
+            openCreateNewFolder={openCreateNewFolder} />
         </Flex>
         {
           // eslint-disable-next-line no-constant-binary-expression, no-unsafe-optional-chaining
@@ -187,9 +183,8 @@ const Page = () => {
               folderIds={
                 folderId
                   ? // eslint-disable-next-line no-constant-binary-expression
-                    ([
-                      // eslint-disable-next-line no-unsafe-optional-chaining
-                      ...(getUploadStatusMutation.data?.parents as string[]),
+                    ([ 
+                      ...getParents(),
                       folderId,
                     ] )
                   : []

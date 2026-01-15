@@ -7,10 +7,11 @@ import { User, UserSchema } from './entities/user.entity';
 import { UsersService } from './service/auth.service';
 import { UserRepository } from './repository/user.repository';
 import { JwtService } from '@nestjs/jwt';
+import { JwtStrategy } from './strategies/jwt.stratergy';
 
 @Module({
   imports: [ConfigModule, MongooseModule.forFeature([{ name: User.name, schema: UserSchema }])],
   controllers: [AuthController],
-  providers: [GoogleStrategy, UsersService, UserRepository, JwtService],
+  providers: [GoogleStrategy, UsersService, UserRepository, JwtService, JwtStrategy],
 })
 export class AuthModule {}

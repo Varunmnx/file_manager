@@ -27,7 +27,7 @@ export default function FileDetailsCard() {
         }
       })
     }
-  }, [fileDetails]);
+  }, [fileDetails, setFileDetails]);
 
   return ( 
       <div

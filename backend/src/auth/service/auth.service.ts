@@ -19,7 +19,7 @@ export class UsersService {
   constructor(
     private readonly userRepository: UserRepository,
     private jwtService: JwtService,
-    private configService: ConfigService
+    private configService: ConfigService,
   ) {}
 
   async findByEmail(email: string): Promise<UserDocument | null> {
@@ -43,7 +43,7 @@ export class UsersService {
         existingUser = await this.register(user);
       }
 
-      const payload = { email: existingUser.email, _id: existingUser._id };
+      const payload = { email: existingUser.email, _id: existingUser._id.toString() };
       return this.jwtService.sign(payload, { secret: this.configService.getOrThrow('JWT_SECRET'), expiresIn: '1d' });
     }
   }

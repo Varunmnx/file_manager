@@ -96,8 +96,6 @@ export class ApiService {
       timeout: this.config.timeout,
       headers: {
         Accept: "application/json",
-
-        // "Content-Type": "application/json",
       },
     });
 

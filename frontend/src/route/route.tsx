@@ -1,4 +1,4 @@
-import ProtectedRoutes from "@/router/auth-routes";
+import ProtectedRoutes from "@/router/protected-routes";
 import { PublicRoutes } from "@/router/public-routes";
 
 const CustomRouter = () => {

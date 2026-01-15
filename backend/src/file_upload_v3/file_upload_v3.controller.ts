@@ -10,7 +10,8 @@ import {
   UseInterceptors,
   BadRequestException,
   Query,
-  Put
+  Put,
+  UseGuards
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UploadPoolService } from './services/file_upload_v3.service';
@@ -18,7 +19,9 @@ import { InitiateUploadDto, UploadChunkDto, CompleteUploadDto } from './dto/uplo
 import { Controller } from '@nestjs/common'; 
 import { FileSizeValidationPipe } from './validation';
 import { CreateFolderDto } from './dto/create-folder.dto';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
+@UseGuards(JwtAuthGuard)
 @Controller('upload')
 export class UploadController {
   constructor(private readonly uploadPoolService: UploadPoolService) { }

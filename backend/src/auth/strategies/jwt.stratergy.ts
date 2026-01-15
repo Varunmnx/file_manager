@@ -16,9 +16,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   validate(payload: { email: string; _id: string }) {
     // JWT module already validated the token signature and expiration
     // We just need to return the user data from the payload
+    console.log(payload);
     return {
       _id: payload._id,
-      email: payload.email 
+      email: payload.email,
     };
   }
 }

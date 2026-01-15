@@ -95,6 +95,7 @@ const LiveFileUploadController = () => {
         bottom: "20px",
         right: "20px",
         fontFamily: "system-ui, -apple-system, sans-serif",
+        zIndex:"100000"
       }}
     >
       <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "16px" }}>
