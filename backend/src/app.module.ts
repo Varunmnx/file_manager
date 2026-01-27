@@ -7,11 +7,13 @@ import { MongooseModule, MongooseModuleFactoryOptions } from '@nestjs/mongoose';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { JwtModule } from '@nestjs/jwt';
+import { OnlyOfficeModule } from './onlyoffice/onlyoffice.module';
 
 @Module({
   imports: [
     UploadModule,
     AuthModule,
+    OnlyOfficeModule,
     ConfigModule.forRoot({ isGlobal: true }),
     MulterModule.register({
       dest: './uploads/temp',

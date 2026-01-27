@@ -117,7 +117,7 @@ const Page = () => {
   const handleFileFolderClick = (entityId: string, isDirectory: boolean) => {
     console.log(entityId);
     if (isDirectory && entityId) {
-      navigate(`/${entityId}`, { replace: true });
+      navigate(`/folder/${entityId}`, { replace: true });
     }
   };
 
@@ -215,7 +215,7 @@ const FileFolderLocation = ({ folderIds }: { folderIds: string[] }) => {
     <Breadcrumbs>
       <Anchor href="/">Home</Anchor>
       {folderIds.map((folderId: string) => (
-        <Anchor href={`/${folderId}`}>{folderId}</Anchor>
+        <Anchor key={folderId} href={`/folder/${folderId}`}>{folderId}</Anchor>
       ))}
     </Breadcrumbs>
   );

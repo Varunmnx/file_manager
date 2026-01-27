@@ -8,7 +8,6 @@ export abstract class EntityRepository<T extends Document> {
     try {
       return await this.entityModel
         .findOne(entityFilterQuery, {
-          _id: 0,
           __v: 0,
           ...projection,
         })

@@ -42,8 +42,12 @@ export class UsersService {
       if (!existingUser) {
         existingUser = await this.register(user);
       }
-
-      const payload = { email: existingUser.email, _id: existingUser._id.toString() };
+      console.log(
+        "existing user",
+        existingUser
+      )
+      const userId = existingUser._id?.toString() || (existingUser as any).id?.toString();
+      const payload = { email: existingUser.email, _id: userId };
       return this.jwtService.sign(payload, { secret: this.configService.getOrThrow('JWT_SECRET'), expiresIn: '1d' });
     }
   }

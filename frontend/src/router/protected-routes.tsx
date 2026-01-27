@@ -2,6 +2,7 @@ import GlobalErrorHandlerContextProvider from "@/context/globalErrorHandlerConte
 import RootLayout from "@/Layout/ExampleLayout";
 import ErrorPage from "@/pages/Error";
 import FileUploadV4 from "@/pages/FileUploadV4";
+import DocumentEditor from "@/pages/DocumentEditor";
 import { ChunkedUploadProvider } from "@/pages/FileUploadV4/context/chunked-upload.context";
 import { RouteObject, useRoutes } from "react-router-dom"; 
 
@@ -23,12 +24,16 @@ const protectedRouteElements: RouteObject = {
         element: <ChunkedUploadProvider><FileUploadV4 /></ChunkedUploadProvider>,
       },
       {
-        path: ':folderId', 
+        path: 'folder/:folderId', 
         loader: () => {
          console.log("index")
          return true
         },
         element: <ChunkedUploadProvider><FileUploadV4 /></ChunkedUploadProvider>
+      },
+      {
+        path: 'document/:fileId',
+        element: <DocumentEditor />
       },
   ],
 };

@@ -9,6 +9,6 @@ import { UploadPoolService } from './services/file_upload_v3.service';
   imports: [MongooseModule.forFeature([{ name: UploadEntity.name, schema: UploadSchema }])],
   controllers: [UploadController],
   providers: [FileFolderRepository, UploadPoolService],
-  exports: [FileFolderRepository],
+  exports: [FileFolderRepository, UploadPoolService],
 })
 export class UploadModule {}

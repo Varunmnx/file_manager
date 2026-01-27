@@ -6,10 +6,11 @@ import { FileTypeIconMapKeys } from "@/utils/fileTypeIcons";
 import { checkAndRetrieveExtension } from "../../utils/getFileIcon";
 import { formatBytes } from "@/utils/formatBytes";
 import { getShortDate } from "@/utils/getDateTime";
-import { IconFolder, IconInfoCircle } from "@tabler/icons-react";
+import { IconFolder, IconInfoCircle, IconFileText } from "@tabler/icons-react";
 import { MouseEvent } from "react";
 import useFileGetStatus from "../../hooks/useFileGetStatus";
 import { useChunkedUpload } from "../../context/chunked-upload.context";
+import { useNavigate } from "react-router-dom";
 const TrashIcon = "https://www.svgrepo.com/show/533014/trash-blank.svg";
 
 interface Props {
@@ -22,6 +23,14 @@ interface Props {
   handleDeleteFile: (uploadId: string) => void;
   onFileFolderRowClick?: (entityId: string,isDirectory: boolean) => void;
 }
+
+// Helper function to check if file is supported by OnlyOffice
+const isSupportedDocument = (fileName: string): boolean => {
+  const ext = fileName.split('.').pop()?.toLowerCase() || '';
+  const supportedExtensions = ['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'odt', 'ods', 'odp', 'pdf'];
+  return supportedExtensions.includes(ext);
+};
+
 const FileFolderTable = (props: Props) => {
   const {
     allSelected,
@@ -36,6 +45,7 @@ const FileFolderTable = (props: Props) => {
 
   const getFileDetailsMutation = useFileGetStatus()
   const {setFileDetails} = useChunkedUpload()
+  const navigate = useNavigate();
 
   function handleMoreInformation(e: MouseEvent<SVGSVGElement, MouseEvent>, id:string) {
     e.stopPropagation();
@@ -49,6 +59,12 @@ const FileFolderTable = (props: Props) => {
       }
     })
   }
+
+  const handleOpenInOnlyOffice = (e: MouseEvent<HTMLButtonElement, MouseEvent>, fileId: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    navigate(`/document/${fileId}`);
+  };
 
   return (
     <Table highlightOnHover verticalSpacing="md">
@@ -107,13 +123,25 @@ const FileFolderTable = (props: Props) => {
               {getShortDate(file?.createdAt as unknown as string)}
             </Table.Td>
             <Table.Td>
-              <ActionIcon onClick={()=>handleDeleteFile(file._id as string)} variant="subtle" color="red">
-                <img
-                  src={TrashIcon}
-                  alt="delete"
-                  style={{ width: "20px", height: "20px" }}
-                />
-              </ActionIcon>
+              <div className="flex gap-2">
+                {!file.isFolder && isSupportedDocument(file.fileName) && (
+                  <ActionIcon 
+                    onClick={(e) => handleOpenInOnlyOffice(e as any, file._id as string)} 
+                    variant="subtle" 
+                    color="blue"
+                    title="Open in OnlyOffice"
+                  >
+                    <IconFileText size={20} />
+                  </ActionIcon>
+                )}
+                <ActionIcon onClick={()=>handleDeleteFile(file._id as string)} variant="subtle" color="red">
+                  <img
+                    src={TrashIcon}
+                    alt="delete"
+                    style={{ width: "20px", height: "20px" }}
+                  />
+                </ActionIcon>
+              </div>
             </Table.Td>
           </Table.Tr>
         ))}
