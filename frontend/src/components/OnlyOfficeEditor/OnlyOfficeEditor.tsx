@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { RevisionHistory } from '../RevisionHistory';
 
 interface OnlyOfficeEditorProps {
   fileId: string;
@@ -54,6 +55,7 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose }: OnlyOffi
   const [editorConfig, setEditorConfig] = useState<EditorConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   
   const editorRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -285,14 +287,22 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose }: OnlyOffi
     <div className="h-screen flex flex-col bg-white">
       <div className="bg-gray-800 text-white px-4 py-3 flex justify-between items-center shadow-md">
         <h1 className="text-lg font-semibold">{fileName}</h1>
-        {onClose && (
+        <div className="flex gap-2">
           <button
-            onClick={onClose}
-            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+            onClick={() => setShowHistory(true)}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors flex items-center gap-2"
           >
-            Close
+            📜 History
           </button>
-        )}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+            >
+              Close
+            </button>
+          )}
+        </div>
       </div>
       {/* Use a ref to prevent React from managing this container's children */}
       <div 
@@ -300,6 +310,17 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose }: OnlyOffi
         className="flex-1" 
         style={{ width: '100%', height: 'calc(100vh - 60px)' }}
         suppressHydrationWarning
+      />
+      
+      {/* Revision History Modal */}
+      <RevisionHistory
+        fileId={fileId}
+        isOpen={showHistory}
+        onClose={() => setShowHistory(false)}
+        onRestore={() => {
+          // Reload the editor after restoring a version
+          window.location.reload();
+        }}
       />
     </div>
   );

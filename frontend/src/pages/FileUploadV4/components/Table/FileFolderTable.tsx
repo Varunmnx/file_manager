@@ -6,11 +6,12 @@ import { FileTypeIconMapKeys } from "@/utils/fileTypeIcons";
 import { checkAndRetrieveExtension } from "../../utils/getFileIcon";
 import { formatBytes } from "@/utils/formatBytes";
 import { getShortDate } from "@/utils/getDateTime";
-import { IconFolder, IconInfoCircle, IconFileText } from "@tabler/icons-react";
-import { MouseEvent } from "react";
+import { IconFolder, IconInfoCircle, IconFileText, IconHistory } from "@tabler/icons-react";
+import { MouseEvent, useState } from "react";
 import useFileGetStatus from "../../hooks/useFileGetStatus";
 import { useChunkedUpload } from "../../context/chunked-upload.context";
 import { useNavigate } from "react-router-dom";
+import { RevisionHistory } from "@/components/RevisionHistory";
 const TrashIcon = "https://www.svgrepo.com/show/533014/trash-blank.svg";
 
 interface Props {
@@ -46,6 +47,9 @@ const FileFolderTable = (props: Props) => {
   const getFileDetailsMutation = useFileGetStatus()
   const {setFileDetails} = useChunkedUpload()
   const navigate = useNavigate();
+  
+  // State for revision history modal
+  const [selectedFileForHistory, setSelectedFileForHistory] = useState<{ id: string; name: string } | null>(null);
 
   function handleMoreInformation(e: MouseEvent<SVGSVGElement, MouseEvent>, id:string) {
     e.stopPropagation();
@@ -64,6 +68,15 @@ const FileFolderTable = (props: Props) => {
     e.stopPropagation();
     e.preventDefault();
     navigate(`/document/${fileId}`);
+  };
+
+  const handleShowHistory = (e: MouseEvent<HTMLButtonElement, MouseEvent>, file: UploadedFile) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setSelectedFileForHistory({
+      id: file._id as string,
+      name: file.fileName.split('/').pop() || file.fileName
+    });
   };
 
   return (
@@ -125,14 +138,24 @@ const FileFolderTable = (props: Props) => {
             <Table.Td>
               <div className="flex gap-2">
                 {!file.isFolder && isSupportedDocument(file.fileName) && (
-                  <ActionIcon 
-                    onClick={(e) => handleOpenInOnlyOffice(e as any, file._id as string)} 
-                    variant="subtle" 
-                    color="blue"
-                    title="Open in OnlyOffice"
-                  >
-                    <IconFileText size={20} />
-                  </ActionIcon>
+                  <>
+                    <ActionIcon 
+                      onClick={(e) => handleOpenInOnlyOffice(e as any, file._id as string)} 
+                      variant="subtle" 
+                      color="blue"
+                      title="Open in OnlyOffice"
+                    >
+                      <IconFileText size={20} />
+                    </ActionIcon>
+                    <ActionIcon 
+                      onClick={(e) => handleShowHistory(e as any, file)} 
+                      variant="subtle" 
+                      color="violet"
+                      title="View Revision History"
+                    >
+                      <IconHistory size={20} />
+                    </ActionIcon>
+                  </>
                 )}
                 <ActionIcon onClick={()=>handleDeleteFile(file._id as string)} variant="subtle" color="red">
                   <img
@@ -146,6 +169,19 @@ const FileFolderTable = (props: Props) => {
           </Table.Tr>
         ))}
       </Table.Tbody>
+      
+      {/* Revision History Modal */}
+      {selectedFileForHistory && (
+        <RevisionHistory
+          fileId={selectedFileForHistory.id}
+          isOpen={!!selectedFileForHistory}
+          onClose={() => setSelectedFileForHistory(null)}
+          onRestore={() => {
+            // Refresh the file list after restoring
+            window.location.reload();
+          }}
+        />
+      )}
     </Table>
   );
 };
