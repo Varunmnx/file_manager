@@ -169,7 +169,7 @@ export class WopiService {
     const onlyOfficeUrl = this.configService.get<string>('ONLYOFFICE_URL', 'http://172.31.0.1:3600');
     // Use your machine's actual IP address so OnlyOffice in Docker can access the backend
     // host.docker.internal doesn't work in all Docker setups (especially Linux or older Windows)
-    const backendUrl = `http:/172.31.0.1:${this.configService.get<string>('PORT', '3000')}`;
+    const backendUrl = `http://172.31.0.1:${this.configService.get<string>('PORT', '3000')}`;
     const fileName = file.fileName.split('/').pop() || file.fileName;
     const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
 

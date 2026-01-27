@@ -1,0 +1,19 @@
+version: "3.8"
+services:
+  onlyoffice-docserver:
+    image: onlyoffice/documentserver:latest
+    container_name: onlyoffice-docserver
+    restart: always
+    ports:
+      - "3600:80"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - F:/vf_manager/onlyoffice-docker/data:/var/www/onlyoffice/Data
+      - F:/vf_manager/onlyoffice-docker/logs:/var/log/onlyoffice
+      - F:/vf_manager/onlyoffice-docker/lib:/var/lib/onlyoffice
+      - F:/vf_manager/onlyoffice-docker/db:/var/lib/postgresql
+    environment:
+      - JWT_ENABLED=false
+      - ALLOW_PRIVATE_IP_ADDRESS=true
+      - ALLOW_META_IP_ADDRESS=true
