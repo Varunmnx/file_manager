@@ -9,8 +9,10 @@ import { UserRepository } from './repository/user.repository';
 import { JwtService } from '@nestjs/jwt';
 import { JwtStrategy } from './strategies/jwt.stratergy';
 
+import { EmailModule } from 'src/email/email.module';
+
 @Module({
-  imports: [ConfigModule, MongooseModule.forFeature([{ name: User.name, schema: UserSchema }])],
+  imports: [ConfigModule, MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]), EmailModule],
   controllers: [AuthController],
   providers: [GoogleStrategy, UsersService, UserRepository, JwtService, JwtStrategy],
   exports: [UsersService],

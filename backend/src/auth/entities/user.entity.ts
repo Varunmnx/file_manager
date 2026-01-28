@@ -36,6 +36,12 @@ export class User {
   @Prop({ default: true })
   isActive: boolean;
 
+  @Prop({ default: false })
+  isVerified: boolean;
+
+  @Prop()
+  verificationToken?: string;
+
   @Prop()
   lastLogin?: Date;
 }

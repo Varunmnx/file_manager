@@ -17,8 +17,13 @@ const GoogleLogin = () => {
 
       console.log("isValid",isValid)
       if(isValid){
-        localStorage.setItem(StorageKeys.TOKEN,token)
-        window.location.href = '/'
+        if (window.opener) {
+           window.opener.postMessage({ type: 'GOOGLE_AUTH_SUCCESS', token }, window.location.origin);
+           window.close();
+        } else {
+           localStorage.setItem(StorageKeys.TOKEN,token)
+           window.location.href = '/'
+        }
       }
     }
   },[token])

@@ -1,9 +1,10 @@
-import { Injectable, ConflictException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, ConflictException, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { UserDocument } from '../entities/user.entity';
 import { UserRepository } from '../repository/user.repository';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
+import { EmailService } from 'src/email/email.service';
 
 export interface CreateUserDto {
   email: string;
@@ -22,6 +23,7 @@ export class UsersService {
     private readonly userRepository: UserRepository,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private readonly emailService: EmailService,
   ) {}
 
   async findByEmail(email: string): Promise<UserDocument | null> {
@@ -34,7 +36,9 @@ export class UsersService {
   }
 
   async register(user: CreateUserDto): Promise<UserDocument> {
-    return this.userRepository.create(user);
+    // Google users are automatically verified
+    const userWithVerification = { ...user, isVerified: true };
+    return this.userRepository.create(userWithVerification);
   }
 
   async login(user: CreateUserDto) {
@@ -42,6 +46,24 @@ export class UsersService {
 
       if (!existingUser) {
         existingUser = await this.register(user);
+      } else {
+        // Link Google ID and verify email if matched by email
+        let updated = false;
+        
+        if (!existingUser.googleId && user.googleId) {
+            existingUser.googleId = user.googleId;
+            updated = true;
+        }
+        
+        if (!existingUser.isVerified) {
+            existingUser.isVerified = true;
+            existingUser.verificationToken = undefined;
+            updated = true;
+        }
+
+        if (updated) {
+            await existingUser.save();
+        }
       }
       return this.generateToken(existingUser);
   }
@@ -77,13 +99,31 @@ export class UsersService {
     }
 
     const hashedPassword = this.hashPassword(dto.password);
+    const verificationToken = crypto.randomBytes(32).toString('hex');
     
-    return this.userRepository.create({
+    const newUser = await this.userRepository.create({
       ...dto,
       password: hashedPassword,
       provider: 'local',
-      picture: dto.picture || '', // Default picture
+      picture: dto.picture || '',
+      isVerified: false,
+      verificationToken,
     });
+
+    await this.emailService.sendVerificationEmail(newUser.email, verificationToken);
+    return newUser;
+  }
+
+  async verifyEmail(token: string) {
+    const user = await this.userRepository.findOne({ verificationToken: token });
+    if (!user) {
+        throw new BadRequestException('Invalid verification token');
+    }
+
+    user.isVerified = true;
+    user.verificationToken = undefined;
+    await user.save();
+    return { message: 'Email verified successfully' };
   }
 
   async loginLocal(dto: { email: string; password: string }) {
@@ -103,6 +143,10 @@ export class UsersService {
     const isValid = this.verifyPassword(dto.password, user.password);
     if (!isValid) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (!user.isVerified) {
+        throw new UnauthorizedException('Please verify your email first');
     }
 
     return {

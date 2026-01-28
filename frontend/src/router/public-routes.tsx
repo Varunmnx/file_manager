@@ -4,6 +4,7 @@ import GlobalErrorHandlerContextProvider from "@/context/globalErrorHandlerConte
 import RootLayout from "@/Layout/ExampleLayout"; 
 import GoogleLogin from "@/pages/Auth/GoogleLogin";
 import Signup from "@/pages/Auth/Signup";
+import VerifyEmail from "@/pages/Auth/VerifyEmail";
 import ErrorPage from "@/pages/Error"; 
 import GoogleRedirector from "@/pages/google";
 // import LandingPage from "@/pages/Landing";
@@ -25,6 +26,10 @@ export const publicRoutes: RouteObject[] = [
       {
         path: "/signup",
         element: <Signup/>
+      },
+      {
+        path: "/verify-email",
+        element: <VerifyEmail/>
       },
       {
         path:  "/auth/google/callback",
