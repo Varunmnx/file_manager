@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { StorageKeys, loadString } from '@/utils/storage';
 
 interface Revision {
   id: string;
@@ -20,14 +21,23 @@ interface RevisionHistoryProps {
   fileId: string;
   isOpen: boolean;
   onClose: () => void;
-  onRestore?: (version: number) => void;
+  onViewRevision?: (version: number, config: any) => void;
 }
 
-export default function RevisionHistory({ fileId, isOpen, onClose, onRestore }: RevisionHistoryProps) {
+// Helper function to get auth headers
+const getAuthHeaders = (): HeadersInit => {
+  const token = loadString(StorageKeys.TOKEN);
+  return {
+    'Authorization': token ? `Bearer ${token}` : '',
+    'Content-Type': 'application/json',
+  };
+};
+
+export default function RevisionHistory({ fileId, isOpen, onClose, onViewRevision }: RevisionHistoryProps) {
   const [data, setData] = useState<RevisionHistoryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [restoring, setRestoring] = useState<number | null>(null);
+  const [viewing, setViewing] = useState<number | null>(null);
 
   useEffect(() => {
     if (isOpen && fileId) {
@@ -39,9 +49,14 @@ export default function RevisionHistory({ fileId, isOpen, onClose, onRestore }: 
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`http://localhost:3000/onlyoffice/revisions/${fileId}`);
+      const response = await fetch(`http://localhost:3000/onlyoffice/revisions/${fileId}`, {
+        headers: getAuthHeaders(),
+      });
       if (!response.ok) {
-        throw new Error('Failed to fetch revisions');
+        if (response.status === 401) {
+          throw new Error('Please log in to view version history');
+        }
+        throw new Error('Failed to fetch versions');
       }
       const result = await response.json();
       setData(result);
@@ -52,34 +67,33 @@ export default function RevisionHistory({ fileId, isOpen, onClose, onRestore }: 
     }
   };
 
-  const handleRestore = async (version: number) => {
-    if (!confirm(`Are you sure you want to restore to version ${version}? The current version will be saved as a new revision.`)) {
-      return;
-    }
-
-    setRestoring(version);
+  const handleView = async (version: number) => {
+    setViewing(version);
     try {
-      const response = await fetch(`http://localhost:3000/onlyoffice/revisions/${fileId}/restore/${version}`, {
-        method: 'POST',
+      const response = await fetch(`http://localhost:3000/onlyoffice/revisions/${fileId}/view/${version}`, {
+        headers: getAuthHeaders(),
       });
       
       if (!response.ok) {
-        throw new Error('Failed to restore revision');
+        if (response.status === 401) {
+          throw new Error('Please log in to view this version');
+        }
+        throw new Error('Failed to get version view config');
       }
 
       const result = await response.json();
-      alert(`Successfully restored to version ${version}. New version: ${result.newVersion}`);
       
-      // Refresh the revision list
-      fetchRevisions();
-      
-      if (onRestore) {
-        onRestore(version);
+      if (onViewRevision) {
+        onViewRevision(version, result);
+        onClose();
+      } else {
+        // Fallback: open in new window
+        window.open(`http://localhost:3000/onlyoffice/download/${fileId}/revision/${version}`, '_blank');
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to restore');
+      alert(err instanceof Error ? err.message : 'Failed to view version');
     } finally {
-      setRestoring(null);
+      setViewing(null);
     }
   };
 
@@ -106,14 +120,14 @@ export default function RevisionHistory({ fileId, isOpen, onClose, onRestore }: 
     <div className="revision-history-overlay">
       <div className="revision-history-modal">
         <div className="revision-history-header">
-          <h2>📜 Revision History</h2>
+          <h2>📜 Version History</h2>
           <button onClick={onClose} className="close-btn">×</button>
         </div>
 
         {loading && (
           <div className="revision-history-loading">
             <div className="spinner"></div>
-            <p>Loading revisions...</p>
+            <p>Loading versions...</p>
           </div>
         )}
 
@@ -128,13 +142,13 @@ export default function RevisionHistory({ fileId, isOpen, onClose, onRestore }: 
           <div className="revision-history-content">
             <div className="file-info">
               <strong>{data.fileName}</strong>
-              <span className="current-version">Current Version: v{data.currentVersion}</span>
+              <span className="current-version">Current: v{data.currentVersion}</span>
             </div>
 
             {data.revisions.length === 0 ? (
               <div className="no-revisions">
                 <p>📝 No previous versions available yet.</p>
-                <p className="hint">Revisions are created when you save changes in the editor.</p>
+                <p className="hint">Versions are created when you save changes in the editor.</p>
               </div>
             ) : (
               <div className="revisions-list">
@@ -159,19 +173,19 @@ export default function RevisionHistory({ fileId, isOpen, onClose, onRestore }: 
                         <td>{formatFileSize(revision.fileSize)}</td>
                         <td className="actions">
                           <button
+                            onClick={() => handleView(revision.version)}
+                            disabled={viewing === revision.version}
+                            className="action-btn view-btn"
+                            title="View this version"
+                          >
+                            {viewing === revision.version ? '...' : '👁️'}
+                          </button>
+                          <button
                             onClick={() => handleDownload(revision.downloadUrl)}
                             className="action-btn download-btn"
                             title="Download this version"
                           >
                             ⬇️
-                          </button>
-                          <button
-                            onClick={() => handleRestore(revision.version)}
-                            disabled={restoring === revision.version}
-                            className="action-btn restore-btn"
-                            title="Restore this version"
-                          >
-                            {restoring === revision.version ? '...' : '↩️'}
                           </button>
                         </td>
                       </tr>
@@ -378,15 +392,15 @@ export default function RevisionHistory({ fileId, isOpen, onClose, onRestore }: 
           background: #c8e6c9;
         }
 
-        .restore-btn {
-          background: #fff3e0;
+        .view-btn {
+          background: #e3f2fd;
         }
 
-        .restore-btn:hover {
-          background: #ffe0b2;
+        .view-btn:hover {
+          background: #bbdefb;
         }
 
-        .restore-btn:disabled {
+        .view-btn:disabled {
           opacity: 0.5;
           cursor: not-allowed;
         }

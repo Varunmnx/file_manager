@@ -1,10 +1,20 @@
-import { Controller, Get, Post, Param, Res, Body, StreamableFile, HttpStatus } from '@nestjs/common';
-import { Response } from 'express';
+import { Controller, Get, Post, Param, Res, Body, StreamableFile, HttpStatus, UseGuards, Req, Query } from '@nestjs/common';
+import { Response, Request } from 'express';
 import { FileFolderRepository } from '../file_upload_v3/repositories/file-folder.repository';
 import { FileRevisionRepository } from './repositories/file-revision.repository';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from 'fs';
-import { join, basename, extname } from 'path';
+import { join, extname } from 'path';
 import { Types } from 'mongoose';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { UsersService } from '../auth/service/auth.service';
+
+// Interface for the authenticated user in the request
+interface AuthenticatedRequest extends Request {
+  user: {
+    _id: string;
+    email: string;
+  };
+}
 
 @Controller('onlyoffice')
 export class OnlyOfficeController {
@@ -14,6 +24,7 @@ export class OnlyOfficeController {
   constructor(
     private readonly fileFolderRepository: FileFolderRepository,
     private readonly fileRevisionRepository: FileRevisionRepository,
+    private readonly usersService: UsersService,
   ) {
     // Ensure revisions directory exists
     if (!existsSync(this.revisionsDir)) {
@@ -85,10 +96,10 @@ export class OnlyOfficeController {
   async downloadRevision(
     @Param('fileId') fileId: string,
     @Param('version') version: string,
-    @Res({ passthrough: true }) res: Response
+    @Res({ passthrough: true }) res: Response,
   ) {
     console.log(`[OnlyOffice] Download revision request: fileId=${fileId}, version=${version}`);
-    
+
     try {
       const revision = await this.fileRevisionRepository.findByVersion(fileId, parseInt(version));
       if (!revision) {
@@ -158,14 +169,16 @@ export class OnlyOfficeController {
         const buffer = Buffer.from(await response.arrayBuffer());
 
         const currentFilePath = join(this.uploadDir, file.fileName);
-        
-        // Get next version number
-        const nextVersion = await this.fileRevisionRepository.getNextVersion(fileId);
-        
+
+        // Get the current version of the file (default to 1 if not set)
+        const currentVersion = file.version || 1;
+
         // Create revision of the current file before overwriting
+        // This revision represents the state BEFORE the new changes
         if (existsSync(currentFilePath)) {
           const ext = extname(file.fileName);
-          const revisionFileName = `${fileId}_v${nextVersion - 1}${ext}`;
+          // Revision file name matches its version number
+          const revisionFileName = `${fileId}_v${currentVersion}${ext}`;
           const revisionPath = join(this.revisionsDir, revisionFileName);
 
           // Copy current file to revisions
@@ -175,10 +188,10 @@ export class OnlyOfficeController {
           const userName = body.users?.[0] || 'Anonymous User';
           const userId = body.actions?.[0]?.userid || 'user-1';
 
-          // Create revision record
+          // Create revision record with the CURRENT version number
           await this.fileRevisionRepository.create({
             fileId: new Types.ObjectId(fileId),
-            version: nextVersion - 1,
+            version: currentVersion,
             revisionFileName,
             fileSize: readFileSync(revisionPath).length,
             savedBy: userName,
@@ -189,20 +202,21 @@ export class OnlyOfficeController {
             documentHash: body.history?.changes?.[0]?.documentSha256,
           });
 
-          console.log(`[OnlyOffice] Created revision v${nextVersion - 1} for file ${fileId}`);
+          console.log(`[OnlyOffice] Created revision v${currentVersion} for file ${fileId}`);
         }
 
         // Save the new version
         writeFileSync(currentFilePath, buffer);
 
-        // Update file version
+        // Increment file version (new content is now the next version)
+        const newVersion = currentVersion + 1;
         await this.fileFolderRepository.update(file._id, {
-          version: nextVersion,
+          version: newVersion,
           lastActivity: new Date(),
           fileSize: buffer.length,
         });
 
-        console.log(`File saved successfully: ${file.fileName} (v${nextVersion})`);
+        console.log(`File saved successfully: ${file.fileName} (v${newVersion})`);
         return res.status(HttpStatus.OK).json({ error: 0 });
       } catch (error) {
         console.error('Error saving file:', error);
@@ -214,7 +228,8 @@ export class OnlyOfficeController {
     return res.status(HttpStatus.OK).json({ error: 0 });
   }
 
-  // Get revision history for a file
+  // Get revision history for a file (requires authentication)
+  @UseGuards(JwtAuthGuard)
   @Get('revisions/:fileId')
   async getRevisions(@Param('fileId') fileId: string) {
     try {
@@ -224,12 +239,12 @@ export class OnlyOfficeController {
       }
 
       const revisions = await this.fileRevisionRepository.findByFileId(fileId);
-      
+
       return {
         fileId,
         fileName: file.fileName.split('/').pop() || file.fileName,
         currentVersion: file.version || 1,
-        revisions: revisions.map(rev => ({
+        revisions: revisions.map((rev) => ({
           id: rev._id.toString(),
           version: rev.version,
           savedBy: rev.savedBy,
@@ -244,79 +259,106 @@ export class OnlyOfficeController {
     }
   }
 
-  // Restore a specific revision
-  @Post('revisions/:fileId/restore/:version')
-  async restoreRevision(
-    @Param('fileId') fileId: string,
-    @Param('version') version: string,
-    @Res() res: Response
-  ) {
+  // View a specific revision in the editor (read-only, requires authentication)
+  @UseGuards(JwtAuthGuard)
+  @Get('revisions/:fileId/view/:version')
+  async viewRevision(@Param('fileId') fileId: string, @Param('version') version: string) {
     try {
       const file = await this.fileFolderRepository.findById(fileId);
       if (!file) {
-        return res.status(404).json({ error: 'File not found' });
+        throw new Error('File not found');
       }
 
-      const revision = await this.fileRevisionRepository.findByVersion(fileId, parseInt(version));
+      const targetVersion = parseInt(version);
+      const revision = await this.fileRevisionRepository.findByVersion(fileId, targetVersion);
       if (!revision) {
-        return res.status(404).json({ error: 'Revision not found' });
+        throw new Error('Revision not found');
       }
 
       const revisionPath = join(this.revisionsDir, revision.revisionFileName);
-      const currentFilePath = join(this.uploadDir, file.fileName);
-
       if (!existsSync(revisionPath)) {
-        return res.status(404).json({ error: 'Revision file not found on disk' });
+        throw new Error('Revision file not found on disk');
       }
 
-      // Create a revision of current file before restoring
-      const nextVersion = await this.fileRevisionRepository.getNextVersion(fileId);
-      const ext = extname(file.fileName);
-      const revisionFileName = `${fileId}_v${nextVersion - 1}${ext}`;
-      const newRevisionPath = join(this.revisionsDir, revisionFileName);
+      const fileName = file.fileName.split('/').pop() || file.fileName;
+      const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
 
-      if (existsSync(currentFilePath)) {
-        copyFileSync(currentFilePath, newRevisionPath);
-        await this.fileRevisionRepository.create({
-          fileId: new Types.ObjectId(fileId),
-          version: nextVersion - 1,
-          revisionFileName,
-          fileSize: readFileSync(newRevisionPath).length,
-          savedBy: 'System (before restore)',
-        });
+      // Determine document type
+      let documentType = 'word';
+      if (['xls', 'xlsx', 'ods', 'csv'].includes(fileExtension)) {
+        documentType = 'cell';
+      } else if (['ppt', 'pptx', 'odp'].includes(fileExtension)) {
+        documentType = 'slide';
       }
 
-      // Restore the old revision
-      copyFileSync(revisionPath, currentFilePath);
+      // backendUrl must be accessible by OnlyOffice container
+      const backendUrl = `http://172.31.0.1:3000`;
 
-      // Update file version
-      await this.fileFolderRepository.update(file._id, {
-        version: nextVersion,
-        lastActivity: new Date(),
-        fileSize: readFileSync(currentFilePath).length,
-      });
+      // Return read-only config for viewing the revision
+      const config = {
+        width: '100%',
+        height: '100%',
+        documentType: documentType,
+        document: {
+          fileType: fileExtension,
+          key: `${fileId}_revision_v${targetVersion}_${Date.now()}`,
+          title: `${fileName} (Version ${targetVersion})`,
+          url: `${backendUrl}/onlyoffice/download/${fileId}/revision/${targetVersion}`,
+          permissions: {
+            edit: false,
+            download: true,
+            print: true,
+            review: false,
+          },
+        },
+        editorConfig: {
+          mode: 'view',
+          user: {
+            id: 'user-1',
+            name: 'Anonymous User',
+          },
+          customization: {
+            chat: false,
+            comments: false,
+            zoom: 100,
+          },
+        },
+        token: '',
+      };
 
-      console.log(`[OnlyOffice] Restored file ${fileId} to version ${version}`);
-
-      return res.status(HttpStatus.OK).json({
-        success: true,
-        message: `Restored to version ${version}`,
-        newVersion: nextVersion,
-      });
+      return {
+        config,
+        onlyOfficeUrl: 'http://172.31.0.1:3600',
+        token: '',
+        revision: {
+          version: targetVersion,
+          savedBy: revision.savedBy,
+          createdAt: revision.createdAt,
+          fileSize: revision.fileSize,
+        },
+      };
     } catch (error) {
-      console.error('[OnlyOffice] Error restoring revision:', error);
-      return res.status(500).json({ error: 'Failed to restore revision' });
+      console.error('[OnlyOffice] Error getting revision view config:', error);
+      throw error;
     }
   }
 
-  // Get editor configuration
+  // Get editor configuration (requires authentication)
+  @UseGuards(JwtAuthGuard)
   @Get('config/:fileId')
-  async getConfig(@Param('fileId') fileId: string) {
+  async getConfig(@Param('fileId') fileId: string, @Req() req: AuthenticatedRequest) {
     const file = await this.fileFolderRepository.findById(fileId);
     console.log('found file', file);
     if (!file) {
       throw new Error('File not found');
     }
+
+    // Get the authenticated user's full details
+    const currentUser = await this.usersService.findByEmail(req.user.email);
+    const userName = currentUser 
+      ? `${currentUser.firstName} ${currentUser.lastName}`.trim() 
+      : 'Anonymous User';
+    const userId = req.user._id;
 
     const fileName = file.fileName.split('/').pop() || file.fileName;
     const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
@@ -353,8 +395,8 @@ export class OnlyOfficeController {
         mode: 'edit',
         callbackUrl: `${backendUrl}/onlyoffice/callback/${fileId}`,
         user: {
-          id: 'user-1',
-          name: 'Anonymous User',
+          id: userId,
+          name: userName,
         },
         customization: {
           forcesave: true,
@@ -368,6 +410,12 @@ export class OnlyOfficeController {
       config,
       onlyOfficeUrl: 'http://172.31.0.1:3600',
       token: '',
+      user: {
+        id: userId,
+        name: userName,
+        email: req.user.email,
+      },
     };
   }
 }
+

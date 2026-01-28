@@ -151,7 +151,7 @@ const FileFolderTable = (props: Props) => {
                       onClick={(e) => handleShowHistory(e as any, file)} 
                       variant="subtle" 
                       color="violet"
-                      title="View Revision History"
+                      title="View Version History"
                     >
                       <IconHistory size={20} />
                     </ActionIcon>
@@ -170,16 +170,12 @@ const FileFolderTable = (props: Props) => {
         ))}
       </Table.Tbody>
       
-      {/* Revision History Modal */}
+      {/* Version History Modal */}
       {selectedFileForHistory && (
         <RevisionHistory
           fileId={selectedFileForHistory.id}
           isOpen={!!selectedFileForHistory}
           onClose={() => setSelectedFileForHistory(null)}
-          onRestore={() => {
-            // Refresh the file list after restoring
-            window.location.reload();
-          }}
         />
       )}
     </Table>

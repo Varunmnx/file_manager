@@ -208,4 +208,23 @@ async createFolder(folderName: string, parentId?: string, folderSize?: number): 
       throw new Error('Could not find root items');
     }
   }
+
+  // Find all descendants (items that have the given ID anywhere in their parents array)
+  async findDescendants(parentId: Types.ObjectId | string): Promise<UploadDocument[]> {
+    try {
+      if (!parentId) {
+        throw new BadRequestException('Parent ID is required');
+      }
+      
+      return await this.entityModel.find({
+        parents: toObjectId(parentId)
+      });
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      console.error('Error finding descendants:', error);
+      throw new Error('Could not find descendants');
+    }
+  }
 }

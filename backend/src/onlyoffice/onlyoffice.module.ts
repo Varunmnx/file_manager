@@ -5,10 +5,12 @@ import { OnlyOfficeController } from './onlyoffice.controller';
 import { UploadModule } from '../file_upload_v3/file_upload_v3.module';
 import { FileRevisionEntity, FileRevisionSchema } from './entities/file-revision.entity';
 import { FileRevisionRepository } from './repositories/file-revision.repository';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
     UploadModule,
+    AuthModule,
     MongooseModule.forFeature([
       { name: FileRevisionEntity.name, schema: FileRevisionSchema },
     ]),
@@ -18,3 +20,4 @@ import { FileRevisionRepository } from './repositories/file-revision.repository'
   exports: [FileRevisionRepository],
 })
 export class OnlyOfficeModule {}
+

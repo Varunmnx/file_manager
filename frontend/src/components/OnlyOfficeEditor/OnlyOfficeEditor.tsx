@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { RevisionHistory } from '../RevisionHistory';
+import { StorageKeys, loadString } from '@/utils/storage';
 
 interface OnlyOfficeEditorProps {
   fileId: string;
@@ -39,6 +40,11 @@ interface EditorConfig {
   };
   token: string;
   onlyOfficeUrl: string;
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+  };
 }
 
 declare global {
@@ -56,6 +62,7 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose }: OnlyOffi
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{ id: string; name: string; email: string } | null>(null);
   
   const editorRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -70,14 +77,26 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose }: OnlyOffi
     };
   }, []);
 
-  // Fetch configuration
+  // Fetch configuration with authentication
   useEffect(() => {
     const fetchConfig = async () => {
       try {
         console.log('Fetching editor config for fileId:', fileId);
-        const response = await fetch(`http://localhost:3000/onlyoffice/config/${fileId}`);
+        
+        // Get the auth token
+        const token = loadString(StorageKeys.TOKEN);
+        
+        const response = await fetch(`http://localhost:3000/onlyoffice/config/${fileId}`, {
+          headers: {
+            'Authorization': token ? `Bearer ${token}` : '',
+            'Content-Type': 'application/json',
+          },
+        });
 
         if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error('Please log in to edit documents');
+          }
           throw new Error('Failed to fetch editor configuration');
         }
 
@@ -86,6 +105,9 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose }: OnlyOffi
         
         if (isMountedRef.current) {
           setEditorConfig(config);
+          if (config.user) {
+            setCurrentUser(config.user);
+          }
         }
       } catch (err) {
         console.error('Error fetching config:', err);
@@ -286,13 +308,21 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose }: OnlyOffi
   return (
     <div className="h-screen flex flex-col bg-white">
       <div className="bg-gray-800 text-white px-4 py-3 flex justify-between items-center shadow-md">
-        <h1 className="text-lg font-semibold">{fileName}</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-lg font-semibold">{fileName}</h1>
+          {currentUser && (
+            <span className="text-sm text-gray-300 flex items-center gap-1">
+              <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+              Editing as: {currentUser.name}
+            </span>
+          )}
+        </div>
         <div className="flex gap-2">
           <button
             onClick={() => setShowHistory(true)}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors flex items-center gap-2"
           >
-            📜 History
+            📜 Versions
           </button>
           {onClose && (
             <button
@@ -312,14 +342,19 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose }: OnlyOffi
         suppressHydrationWarning
       />
       
-      {/* Revision History Modal */}
+      {/* Version History Modal */}
       <RevisionHistory
         fileId={fileId}
         isOpen={showHistory}
         onClose={() => setShowHistory(false)}
-        onRestore={() => {
-          // Reload the editor after restoring a version
-          window.location.reload();
+        onViewRevision={(version, config) => {
+          // Open the revision viewer in a new tab
+          // The config contains the OnlyOffice configuration for viewing
+          console.log('Viewing revision:', version, config);
+          // For now, open the download URL in a new window
+          // This will download/view the file
+          const downloadUrl = `http://localhost:3000/onlyoffice/download/${fileId}/revision/${version}`;
+          window.open(downloadUrl, '_blank');
         }}
       />
     </div>

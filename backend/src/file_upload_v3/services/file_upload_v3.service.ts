@@ -6,6 +6,7 @@ import { FileFolderRepository } from '../repositories/file-folder.repository';
 import { UploadDocument, UploadEntity } from '../entities/upload-status.entity'; 
 import { toObjectId } from 'src/common/utils';
 import { Types } from 'mongoose';
+import { FileRevisionRepository } from '../../onlyoffice/repositories/file-revision.repository';
 
 export interface UploadSession { 
     fileName: string;
@@ -24,9 +25,13 @@ export class UploadPoolService {
     private readonly uploadDir = join(process.cwd(), 'uploads');
     private readonly chunksDir = join(process.cwd(), 'uploads', 'chunks');
     private readonly metaDataDir = join(process.cwd(), 'uploads', 'meta');
+    private readonly revisionsDir = join(process.cwd(), 'uploads', 'revisions');
     private readonly sessionTimeout = 24 * 60 * 60 * 1000; // 24 hours
 
-    constructor(private readonly fileFolderRepository: FileFolderRepository) {}
+    constructor(
+        private readonly fileFolderRepository: FileFolderRepository,
+        private readonly fileRevisionRepository: FileRevisionRepository,
+    ) {}
 
     async initiateUpload(
         fileName: string, 
@@ -225,7 +230,15 @@ export class UploadPoolService {
         await this.resetParentFolderSizes([uploadId]);
         this.cleanupChunks(uploadId);
         
-        // Delete all children recursively
+        // Delete all file revisions for this file
+        await this.cleanupRevisions(uploadId);
+        
+        // Delete all children recursively (and their revisions)
+        const children = await this.fileFolderRepository.findDescendants(session._id);
+        for (const child of children) {
+            await this.cleanupRevisions(child._id.toString());
+        }
+        
         await this.fileFolderRepository.deleteMany({
             parents: session._id
         });
@@ -237,6 +250,33 @@ export class UploadPoolService {
         const uploadChunkDir = join(this.chunksDir, uploadId);
         if (existsSync(uploadChunkDir)) {
             rmSync(uploadChunkDir, { recursive: true, force: true });
+        }
+    }
+
+    /**
+     * Delete all revisions for a file from both database and disk
+     */
+    private async cleanupRevisions(fileId: string): Promise<void> {
+        try {
+            // Get all revisions for this file
+            const revisions = await this.fileRevisionRepository.findByFileId(fileId);
+            
+            // Delete revision files from disk
+            for (const revision of revisions) {
+                const revisionPath = join(this.revisionsDir, revision.revisionFileName);
+                if (existsSync(revisionPath)) {
+                    unlinkSync(revisionPath);
+                }
+            }
+            
+            // Delete all revision records from database
+            const deletedCount = await this.fileRevisionRepository.deleteAllRevisions(fileId);
+            if (deletedCount > 0) {
+                console.log(`[UploadPoolService] Deleted ${deletedCount} revisions for file ${fileId}`);
+            }
+        } catch (error) {
+            console.error(`[UploadPoolService] Error cleaning up revisions for file ${fileId}:`, error);
+            // Don't throw - continue with file deletion even if revision cleanup fails
         }
     }
 
@@ -258,6 +298,11 @@ export class UploadPoolService {
 
     async deleteAllUploadedFiles(uploadIds: string[]) {
         await this.resetParentFolderSizes(uploadIds);
+        
+        // Delete all revisions for each file
+        for (const uploadId of uploadIds) {
+            await this.cleanupRevisions(uploadId);
+        }
         
         await this.fileFolderRepository.deleteMany({_id:uploadIds?.map((id) => toObjectId(id))});
         
