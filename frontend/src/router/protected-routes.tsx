@@ -35,6 +35,10 @@ const protectedRouteElements: RouteObject = {
         path: 'document/:fileId',
         element: <DocumentEditor />
       },
+      {
+        path: 'document/:fileId/revision/:version',
+        element: <DocumentEditor />
+      },
   ],
 };
 

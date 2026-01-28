@@ -53,8 +53,8 @@ export class UploadEntity {
   @Prop({ type: String, name: 'fileHash' })
   public fileHash: string;
 
-  @Prop({ type: 'number', name: 'version', default: 0 })
-  public version = 0;
+  @Prop({ type: 'number', name: 'version', default: 1 })
+  public version = 1;
 
   public static builder() {
     return new UploadEntity.Builder();
@@ -89,7 +89,7 @@ export class UploadEntity {
     chunkSize: number;
     createdAt: Date;
     lastActivity: Date;
-    version = 0;
+    version = 1;
     parents: Types.ObjectId[];
     children: Types.ObjectId[];
     isFolder: boolean;
@@ -167,7 +167,7 @@ export class UploadEntity {
       e.chunkSize = this.chunkSize;
       e.createdAt = this.createdAt;
       e.lastActivity = this.lastActivity;
-      e.version = this.version + 1;
+      e.version = this.version || 1;
       e.parents = this.parents;
       e.children = this.children;
       e.isFolder = this.isFolder;

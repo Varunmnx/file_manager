@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { RevisionHistory } from '../RevisionHistory';
 import { StorageKeys, loadString } from '@/utils/storage';
+import { useNavigate } from 'react-router-dom';
 
 interface OnlyOfficeEditorProps {
   fileId: string;
   fileName: string;
   onClose?: () => void;
+  revisionVersion?: number; // If set, view this specific revision in read-only mode
 }
 
 interface EditorConfig {
@@ -57,7 +59,8 @@ declare global {
   }
 }
 
-export default function OnlyOfficeEditor({ fileId, fileName, onClose }: OnlyOfficeEditorProps) {
+export default function OnlyOfficeEditor({ fileId, fileName, onClose, revisionVersion }: OnlyOfficeEditorProps) {
+  const navigate = useNavigate();
   const [editorConfig, setEditorConfig] = useState<EditorConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,12 +84,17 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose }: OnlyOffi
   useEffect(() => {
     const fetchConfig = async () => {
       try {
-        console.log('Fetching editor config for fileId:', fileId);
+        console.log('Fetching editor config for fileId:', fileId, 'revision:', revisionVersion);
         
         // Get the auth token
         const token = loadString(StorageKeys.TOKEN);
         
-        const response = await fetch(`http://localhost:3000/onlyoffice/config/${fileId}`, {
+        // Use different endpoint based on whether we're viewing a revision
+        const endpoint = revisionVersion
+          ? `http://localhost:3000/onlyoffice/revisions/${fileId}/view/${revisionVersion}`
+          : `http://localhost:3000/onlyoffice/config/${fileId}`;
+        
+        const response = await fetch(endpoint, {
           headers: {
             'Authorization': token ? `Bearer ${token}` : '',
             'Content-Type': 'application/json',
@@ -95,18 +103,18 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose }: OnlyOffi
 
         if (!response.ok) {
           if (response.status === 401) {
-            throw new Error('Please log in to edit documents');
+            throw new Error('Please log in to view documents');
           }
           throw new Error('Failed to fetch editor configuration');
         }
 
-        const config = await response.json();
-        console.log('Editor config received:', config);
+        const data = await response.json();
+        console.log('Editor config received:', data);
         
         if (isMountedRef.current) {
-          setEditorConfig(config);
-          if (config.user) {
-            setCurrentUser(config.user);
+          setEditorConfig(data);
+          if (data.user) {
+            setCurrentUser(data.user);
           }
         }
       } catch (err) {
@@ -119,7 +127,10 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose }: OnlyOffi
     };
 
     fetchConfig();
-  }, [fileId]);
+  }, [fileId, revisionVersion]);
+
+  // Determine if we're in revision viewing mode
+  const isRevisionMode = revisionVersion !== undefined;
 
   // Load script and initialize editor
   useEffect(() => {
@@ -307,10 +318,20 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose }: OnlyOffi
 
   return (
     <div className="h-screen flex flex-col bg-white">
+      {/* Revision Mode Banner */}
+      {isRevisionMode && (
+        <div className="bg-amber-500 text-amber-900 px-4 py-2 text-center font-medium">
+          📋 Viewing Version {revisionVersion} (Read-Only) - <button onClick={onClose} className="underline hover:no-underline">Return to current version</button>
+        </div>
+      )}
+      
       <div className="bg-gray-800 text-white px-4 py-3 flex justify-between items-center shadow-md">
         <div className="flex items-center gap-4">
-          <h1 className="text-lg font-semibold">{fileName}</h1>
-          {currentUser && (
+          <h1 className="text-lg font-semibold">
+            {fileName}
+            {isRevisionMode && <span className="text-amber-300 ml-2">(v{revisionVersion})</span>}
+          </h1>
+          {currentUser && !isRevisionMode && (
             <span className="text-sm text-gray-300 flex items-center gap-1">
               <span className="w-2 h-2 bg-green-400 rounded-full"></span>
               Editing as: {currentUser.name}
@@ -318,18 +339,20 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose }: OnlyOffi
           )}
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={() => setShowHistory(true)}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors flex items-center gap-2"
-          >
-            📜 Versions
-          </button>
+          {!isRevisionMode && (
+            <button
+              onClick={() => setShowHistory(true)}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors flex items-center gap-2"
+            >
+              📜 Versions
+            </button>
+          )}
           {onClose && (
             <button
               onClick={onClose}
               className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
             >
-              Close
+              {isRevisionMode ? 'Back to Current' : 'Close'}
             </button>
           )}
         </div>
@@ -347,14 +370,9 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose }: OnlyOffi
         fileId={fileId}
         isOpen={showHistory}
         onClose={() => setShowHistory(false)}
-        onViewRevision={(version, config) => {
-          // Open the revision viewer in a new tab
-          // The config contains the OnlyOffice configuration for viewing
-          console.log('Viewing revision:', version, config);
-          // For now, open the download URL in a new window
-          // This will download/view the file
-          const downloadUrl = `http://localhost:3000/onlyoffice/download/${fileId}/revision/${version}`;
-          window.open(downloadUrl, '_blank');
+        onViewRevision={(version) => {
+          // Navigate to the revision view page
+          navigate(`/document/${fileId}/revision/${version}`);
         }}
       />
     </div>

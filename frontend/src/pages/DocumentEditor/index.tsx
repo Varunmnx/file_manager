@@ -1,16 +1,21 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { OnlyOfficeEditor } from '../../components/OnlyOfficeEditor';
-import { useEffect, useState } from 'react';
 
 export default function DocumentEditor() {
-  const { fileId } = useParams<{ fileId: string }>();
+  const { fileId, version } = useParams<{ fileId: string; version?: string }>();
   const navigate = useNavigate();
-  const [fileName, setFileName] = useState('Document');
+  const fileName = 'Document'; // fileName will come from the editor config
 
-  // File name will be loaded by OnlyOfficeEditor component directly from config
+  // If version is specified, we're viewing a revision in read-only mode
+  const revisionVersion = version ? parseInt(version) : undefined;
 
   const handleClose = () => {
-    navigate(-1); // Go back to previous page
+    // If viewing a revision, go back to the main document
+    if (revisionVersion) {
+      navigate(`/document/${fileId}`);
+    } else {
+      navigate("/"); // Go back to previous page
+    }
   };
 
   if (!fileId) {
@@ -20,7 +25,7 @@ export default function DocumentEditor() {
           <h2 className="text-xl font-semibold text-red-800 mb-2">Error</h2>
           <p className="text-red-600">File ID is required</p>
           <button
-            onClick={handleClose}
+            onClick={() => navigate(-1)}
             className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
           >
             Go Back
@@ -30,5 +35,13 @@ export default function DocumentEditor() {
     );
   }
 
-  return <OnlyOfficeEditor fileId={fileId} fileName={fileName} onClose={handleClose} />;
+  return (
+    <OnlyOfficeEditor 
+      fileId={fileId} 
+      fileName={fileName} 
+      onClose={handleClose}
+      revisionVersion={revisionVersion}
+    />
+  );
 }
+

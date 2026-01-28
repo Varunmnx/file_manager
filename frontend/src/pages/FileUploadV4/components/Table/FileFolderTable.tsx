@@ -176,6 +176,10 @@ const FileFolderTable = (props: Props) => {
           fileId={selectedFileForHistory.id}
           isOpen={!!selectedFileForHistory}
           onClose={() => setSelectedFileForHistory(null)}
+          onViewRevision={(version) => {
+            navigate(`/document/${selectedFileForHistory.id}/revision/${version}`);
+            setSelectedFileForHistory(null);
+          }}
         />
       )}
     </Table>
