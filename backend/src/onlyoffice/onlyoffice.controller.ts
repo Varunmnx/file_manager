@@ -274,11 +274,15 @@ export class OnlyOfficeController {
   // View a specific revision in the editor (read-only, requires authentication)
   @UseGuards(JwtAuthGuard)
   @Get('revisions/:fileId/view/:version')
-  async viewRevision(@Param('fileId') fileId: string, @Param('version') version: string) {
+  async viewRevision(@Param('fileId') fileId: string, @Param('version') version: string, @Req() req: AuthenticatedRequest) {
     try {
       const file = await this.fileFolderRepository.findById(fileId);
       if (!file) throw new Error('File not found');
-
+    const currentUser = await this.usersService.findByEmail(req.user.email);
+    const userName = currentUser 
+      ? `${currentUser.firstName} ${currentUser.lastName}`.trim() 
+      : 'Anonymous User';
+    const userId = req.user._id;
       const targetVersion = parseInt(version);
       const revision = await this.fileRevisionRepository.findByVersion(fileId, targetVersion);
       if (!revision) throw new Error('Revision not found');
@@ -304,7 +308,7 @@ export class OnlyOfficeController {
         documentType: documentType,
         document: {
           fileType: fileExtension,
-          key: `${fileId}_revision_v${targetVersion}_${Date.now()}`,
+          key: `${fileId}_rev_v${targetVersion}`,
           title: `${fileName} (Version ${targetVersion})`,
           // Add token to the internal download URL
           url: `${backendUrl}/onlyoffice/download/${fileId}/revision/${targetVersion}?token=${downloadToken}`,
@@ -318,8 +322,8 @@ export class OnlyOfficeController {
         editorConfig: {
           mode: 'view',
           user: {
-            id: 'user-1',
-            name: 'Anonymous User',
+            id: userId,
+            name: userName,
           },
           customization: {
             chat: false,
@@ -388,7 +392,7 @@ export class OnlyOfficeController {
       documentType: documentType,
       document: {
         fileType: fileExtension,
-        key: `${fileId}_${file.version || 1}_${Date.now()}`,
+        key: `${fileId}_v${file.version || 1}`,
         title: fileName,
         // Add token to download URL
         url: `${backendUrl}/onlyoffice/download/${fileId}?token=${downloadToken}`,

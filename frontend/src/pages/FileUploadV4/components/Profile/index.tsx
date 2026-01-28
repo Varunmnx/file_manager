@@ -1,4 +1,5 @@
 import { useAppSelector } from "@/store";
+import { clear } from "@/utils";
 import { Menu, Avatar, Text, UnstyledButton, Group, rem } from "@mantine/core";
 import {
   IconFolder,
@@ -26,8 +27,8 @@ const Profile = ({
   const handleLogout = () => {
     // Add your logout logic here
     // e.g., dispatch(logout()), clear tokens, etc.
-    localStorage.removeItem("token");
-    navigate("/signin");
+    clear()
+    window.location.reload()
   };
 
     const getInitials = () => {
