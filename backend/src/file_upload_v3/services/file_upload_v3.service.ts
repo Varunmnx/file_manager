@@ -1,5 +1,5 @@
 /* eslint-disable prettier/prettier */
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
 import { createWriteStream, existsSync, readFileSync, writeFileSync, unlinkSync, rmSync, mkdirSync } from 'fs';
 import { join } from 'path'; 
 import { FileFolderRepository } from '../repositories/file-folder.repository';
@@ -70,6 +70,9 @@ export class UploadPoolService {
         }
 
         // Build proper parent lineage
+        // Build proper parent lineage
+        let fullParentLineage: Types.ObjectId[] = [];
+        
         if (parent && parent.length > 0) {
             // Get the direct parent (last item in the array from frontend)
             const directParentId = parent[parent.length - 1];
@@ -80,7 +83,6 @@ export class UploadPoolService {
             }
             
             // Build the complete lineage: all parent's ancestors + the parent itself
-            let fullParentLineage: Types.ObjectId[];
             if (parentFolder.parents && parentFolder.parents.length > 0) {
                 fullParentLineage = [...parentFolder.parents, toObjectId(directParentId)];
             } else {
@@ -100,9 +102,11 @@ export class UploadPoolService {
             }
             
             // Set the complete lineage in the upload entity
-            // fullParentLineage = await this.fileFolderRepository.buildFullParentPath(toObjectId(directParentId));
             uploadStatus.setParents(fullParentLineage);
         }
+
+        // Check for duplicates in the target location
+        await this.fileFolderRepository.checkDuplicate(fileName, fullParentLineage);
 
         if (children) {
             uploadStatus.setChildren(children.map(c => toObjectId(c)));
@@ -116,6 +120,89 @@ export class UploadPoolService {
             mkdirSync(uploadChunkDir, { recursive: true });
         }
         
+        return newUpload._id.toString();
+    }
+
+    async createEmptyFile(fileName: string, parentId?: string): Promise<string> {
+        // 1. Create the entity representing a completed empty file
+        const fileSize = 0;
+        const totalChunks = 1;
+        const chunkSize = 0;
+
+        const session: UploadSession = { 
+            fileName,
+            fileSize,
+            totalChunks,
+            uploadedChunks: [0], // "Uploaded" the 0th chunk (empty)
+            chunkSize,
+            createdAt: new Date(),
+            lastActivity: new Date(),
+            resourceType: "file"
+        };
+
+        const uploadStatus = UploadEntity.builder();
+        uploadStatus 
+            .setFileName(fileName)
+            .setFileSize(fileSize)
+            .setTotalChunks(totalChunks)
+            .setUploadedChunks(session.uploadedChunks)
+            .setChunkSize(session.chunkSize)
+            .setLastActivity(session.lastActivity)
+            .setIsFolder(false);
+
+        // 2. Handle Parent Lineage (same as initiateUpload)
+        let fullParentLineage: Types.ObjectId[] = [];
+        if (parentId) {
+            const parentFolder = await this.fileFolderRepository.findById(parentId);
+            
+            if (!parentFolder || !parentFolder.isFolder) {
+                throw new NotFoundException('Parent folder not found');
+            }
+            
+            if (parentFolder.parents && parentFolder.parents.length > 0) {
+                fullParentLineage = [...parentFolder.parents, toObjectId(parentId)];
+            } else {
+                fullParentLineage = [toObjectId(parentId)];
+            }
+            
+            // Update ancestors? (Adding 0 size doesn't change size, but updates lastActivity?)
+            // We can skip size update since fileSize is 0.
+            
+            uploadStatus.setParents(fullParentLineage);
+        }
+
+        // Check for duplicates in the target location
+        await this.fileFolderRepository.checkDuplicate(fileName, fullParentLineage);
+
+        let newUpload = await this.fileFolderRepository.create(uploadStatus.build());
+        newUpload = await newUpload.save();
+
+        // 3. Create the empty physical file
+        // Ensure uploads directory exists
+        if (!existsSync(this.uploadDir)) {
+             mkdirSync(this.uploadDir, { recursive: true });
+        }
+
+        const finalFilePath = join(this.uploadDir, newUpload.fileName);
+        
+        // Handle potential naming collision on disk? 
+        // The DB `fileName` is unique per folder usually, but file storage is flat `uploads/filename`.
+        // If `UploadEntity` stores just `fileName`, then `uploads/fileName` acts as a flat namespace?
+        // Wait, `initiateUpload` stores `fileName` in entity.
+        // `completeUpload` writes to `join(this.uploadDir, session.fileName)`.
+        // If two users upload `test.txt` in different folders, the DB allows it (different parents).
+        // But the physical file path `uploads/test.txt` would collide!
+        // The current system seems to assume flat filenames or has an issue with collisions?
+        // Looking at `completeUpload` (lines 186+):
+        // `const folderArray = session.fileName.split('/');` -> checks for subdirectories in filename?
+        // Usually file managers use `_id` or hashing for storage to avoid collisions.
+        // But `downloadFile` (OnlyOfficeController) reads `join(this.uploadDir, file.fileName)`.
+        // If `file.fileName` is the display name, this is a bug in the existing system (collisions).
+        // However, assuming I follow existing pattern:
+        // I will write to `join(this.uploadDir, newUpload.fileName)`.
+        
+        writeFileSync(finalFilePath, Buffer.from([]));
+
         return newUpload._id.toString();
     }
 

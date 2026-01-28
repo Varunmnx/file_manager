@@ -19,6 +19,7 @@ import { InitiateUploadDto, UploadChunkDto, CompleteUploadDto } from './dto/uplo
 import { Controller } from '@nestjs/common'; 
 import { FileSizeValidationPipe } from './validation';
 import { CreateFolderDto } from './dto/create-folder.dto';
+import { CreateFileDto } from './dto/create-file.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard)
@@ -46,6 +47,12 @@ export class UploadController {
   async createFolder(@Body() dto: CreateFolderDto) {
     const {_id} = await this.uploadPoolService.createNewFolder(dto.folderName, dto.parent);
     return { uploadId:_id };
+  }
+
+  @Post('create-file')
+  async createFile(@Body() dto: CreateFileDto) {
+    const uploadId = await this.uploadPoolService.createEmptyFile(dto.fileName, dto.parent);
+    return { uploadId };
   }
 
   @Post('chunk')

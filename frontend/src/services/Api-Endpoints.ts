@@ -3,7 +3,7 @@
  */
 export enum Slug {
   LOGIN = "/auth/login",
-  REGISTER = "/auth/register",
+  REGISTER = "/auth/signup",
   REFRESH = "/auth/refresh",
   UPLOAD_CHUNK = "/upload/chunk",
   COMPLETE_UPLOAD = "/upload/complete",
@@ -11,5 +11,6 @@ export enum Slug {
   INITIATE_FILE_UPLOAD = "/upload/initiate",
   GET_ALL_FILES = "/upload/all",
   CREATE_FOLDER = "/upload/folder", 
+  CREATE_FILE = "/upload/create-file",
   PAUSE_UPLOAD  = "/upload/pause"
 }

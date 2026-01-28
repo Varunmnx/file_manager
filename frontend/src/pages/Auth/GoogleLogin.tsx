@@ -1,19 +1,40 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { API } from '@/services/Api';
+import { Slug } from '@/services/Api-Endpoints';
+import { saveString, StorageKeys } from '@/utils/storage';
+import { toast } from 'sonner';
 
 const GoogleLogin = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Login submitted:', { email, password });
-    // Add your login logic here
+    try {
+        const res = await API.post<{ token: string, user: any }>({
+            slug: Slug.LOGIN,
+            body: { email, password },
+        });
+        
+        if (res && res.token) {
+            saveString(StorageKeys.TOKEN, res.token);
+            toast.success('Login successful');
+            navigate('/');
+            // Reload to ensure global state/auth context updates
+            window.location.reload(); 
+        } else {
+            toast.error('Login failed: No token received');
+        }
+    } catch (error: any) {
+        console.error(error);
+        toast.error(error?.response?.data?.message || 'Login failed');
+    }
   };
 
   const handleGoogleLogin = () => {
-    console.log('Google login clicked');
-    // Add Google OAuth logic here
     window.location.href = 'http://localhost:3000/auth/google'
   };
 
@@ -143,7 +164,7 @@ const GoogleLogin = () => {
           {/* Sign Up Link */}
           <p className="text-center text-sm text-gray-600 mt-6">
             Don't have an account?{' '}
-            <a href="#" className="text-blue-600 hover:text-blue-700 font-medium">
+            <a onClick={() => navigate('/signup')} className="text-blue-600 hover:text-blue-700 font-medium cursor-pointer">
               Sign up
             </a>
           </p>

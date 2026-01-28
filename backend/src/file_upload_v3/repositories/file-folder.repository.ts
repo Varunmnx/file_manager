@@ -103,27 +103,8 @@ async createFolder(folderName: string, parentId?: string, folderSize?: number): 
       }
     }
 
-    //  Prevent duplicate folder names in same parent context
-    const query: QueryFilter<UploadDocument> = {
-      fileName: folderName.trim(),
-      isFolder: true,
-    };
-
-    if (parents.length > 0) {
-      // Match exact parents array (full path)
-      query.parents = parents;
-    } else {
-      query.$or = [
-        { parents: { $exists: false } },
-        { parents: { $size: 0 } },
-        { parents: [] }
-      ];
-    }
-
-    const existingFolder = await this.entityModel.findOne(query);
-    if (existingFolder) {
-      throw new ConflictException(`Folder "${folderName}" already exists in this location`);
-    }
+    // Unified duplicate check (matches files and folders)
+    await this.checkDuplicate(folderName, parents);
 
     const newFolder = await this.entityModel.create({
       fileName: folderName.trim(),
@@ -225,6 +206,27 @@ async createFolder(folderName: string, parentId?: string, folderSize?: number): 
       }
       console.error('Error finding descendants:', error);
       throw new Error('Could not find descendants');
+    }
+  }
+
+  async checkDuplicate(fileName: string, parents: Types.ObjectId[]): Promise<void> {
+    const query: QueryFilter<UploadDocument> = {
+      fileName: fileName.trim(),
+    };
+
+    if (parents && parents.length > 0) {
+      query.parents = parents;
+    } else {
+      query.$or = [
+        { parents: { $exists: false } },
+        { parents: { $size: 0 } },
+        { parents: [] }
+      ];
+    }
+
+    const existing = await this.entityModel.findOne(query);
+    if (existing) {
+      throw new ConflictException(`A file or folder with the name "${fileName}" already exists in this location.`);
     }
   }
 }

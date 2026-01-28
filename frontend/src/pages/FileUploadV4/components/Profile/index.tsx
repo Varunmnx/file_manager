@@ -7,6 +7,7 @@ import {
   IconTrash,
   IconUpload,
   IconUser,
+  IconFilePlus,
 } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 
@@ -14,12 +15,14 @@ interface Props {
   deleteAllUploads: () => void;
   onResourceUpload: () => void;
   openCreateNewFolder: () => void;
+  openCreateNewFile: () => void;
 }
 
 const Profile = ({
   deleteAllUploads,
   onResourceUpload,
   openCreateNewFolder,
+  openCreateNewFile,
 }: Props) => {
   const profile = useAppSelector((state) => state.profileSlice.profile);
   const navigate = useNavigate();
@@ -97,6 +100,12 @@ const Profile = ({
           leftSection={<IconFolder size={14} />}
         >
           Create New Folder
+        </Menu.Item>
+        <Menu.Item
+          onClick={openCreateNewFile}
+          leftSection={<IconFilePlus size={14} />}
+        >
+          Create New File
         </Menu.Item>
 
         <Menu.Item

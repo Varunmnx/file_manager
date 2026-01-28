@@ -1,5 +1,5 @@
 /* eslint-disable prettier/prettier */
-import { Controller, Get, Req, UseGuards, Res } from '@nestjs/common';
+import { Controller, Get, Req, UseGuards, Res, Post, Body } from '@nestjs/common';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { Response } from 'express';
 import { JwtService } from '@nestjs/jwt';
@@ -34,5 +34,15 @@ export class AuthController {
     const user = req.user;
     const currentUser = await this.authService.findByEmail(user.email);
     return currentUser;
+  }
+
+  @Post('signup')
+  async signup(@Body() dto: CreateUserDto) {
+      return this.authService.signupLocal(dto);
+  }
+
+  @Post('login')
+  async login(@Body() dto: any) {
+      return this.authService.loginLocal(dto);
   }
 }

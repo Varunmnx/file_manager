@@ -1,5 +1,7 @@
-import { Box, Button, Input, InputLabel, Modal } from '@mantine/core'
+import { Button, Modal, Stack, TextInput, Group } from '@mantine/core';
 import { useParams } from 'react-router-dom';
+import { useState } from 'react';
+import { IconFolderPlus } from '@tabler/icons-react';
 
 interface Props {
     opened: boolean;
@@ -8,16 +10,46 @@ interface Props {
 }
 
 const CreateFolderModal = (props: Props) => {
-  const params = useParams()
-  const folderId = params?.folderId
-  console.log(params)
+  const params = useParams();
+  const folderId = params?.folderId;
+  const [folderName, setFolderName] = useState('');
+
+  const handleSubmit = () => {
+    if (!folderName.trim()) return;
+    props.onSubmit(folderName.trim(), folderId);
+    setFolderName(''); // Reset after submit
+  };
+
+  const handleClose = () => {
+    setFolderName('');
+    props.close();
+  };
+
   return (
-    <Modal opened={props.opened} onClose={props.close}>
-        <Box p={10}>
-             <InputLabel htmlFor='folder-name'>Folder Name</InputLabel>
-             <Input name='folder-name' id='folder-name' placeholder="Folder Name" />
-             <Button onClick={()=>props.onSubmit((document.getElementById('folder-name') as HTMLInputElement)?.value, folderId)}>Submit</Button>
-        </Box>
+    <Modal 
+        opened={props.opened} 
+        onClose={handleClose} 
+        title="Create New Folder"
+        centered
+    >
+        <Stack gap="md">
+             <TextInput
+                label="Folder Name"
+                placeholder="e.g. Finance Documents"
+                value={folderName}
+                onChange={(e) => setFolderName(e.currentTarget.value)}
+                data-autofocus
+                leftSection={<IconFolderPlus size={16} />}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSubmit();
+                }}
+             />
+             
+             <Group justify="flex-end" mt="sm">
+                <Button variant="default" onClick={handleClose}>Cancel</Button>
+                <Button onClick={handleSubmit} disabled={!folderName.trim()}>Create Folder</Button>
+             </Group>
+        </Stack>
     </Modal>
   )
 }

@@ -12,6 +12,7 @@ export interface CreateUserDto {
   googleId?: string;
   accessToken?: string;
   refreshToken?: string;
+  password?: string;
 }
 
 @Injectable()

@@ -3,6 +3,7 @@
 import GlobalErrorHandlerContextProvider from "@/context/globalErrorHandlerContext/globalErrorHandlerContextProvider";
 import RootLayout from "@/Layout/ExampleLayout"; 
 import GoogleLogin from "@/pages/Auth/GoogleLogin";
+import Signup from "@/pages/Auth/Signup";
 import ErrorPage from "@/pages/Error"; 
 import GoogleRedirector from "@/pages/google";
 // import LandingPage from "@/pages/Landing";
@@ -20,6 +21,10 @@ export const publicRoutes: RouteObject[] = [
       {
         path: "/signin",
         element: <GoogleLogin/>
+      },
+      {
+        path: "/signup",
+        element: <Signup/>
       },
       {
         path:  "/auth/google/callback",

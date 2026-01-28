@@ -21,6 +21,10 @@ export class User {
   googleId?: string;
 
   @Prop()
+  password?: string;
+
+
+  @Prop()
   accessToken?: string;
 
   @Prop()

@@ -2,6 +2,26 @@ import { useEffect, useRef, useState } from 'react';
 import { RevisionHistory } from '../RevisionHistory';
 import { StorageKeys, loadString } from '@/utils/storage';
 import { useNavigate } from 'react-router-dom';
+import { 
+  Breadcrumbs,  
+  Badge, 
+  Button, 
+  Group, 
+  Avatar, 
+  Text,
+  Paper,
+  Box,
+  Loader,
+  Alert
+} from '@mantine/core';
+import {  
+  IconClock, 
+  IconLock, 
+  IconHistory,
+  IconX,
+  IconArrowLeft,
+  IconAlertCircle
+} from '@tabler/icons-react';
 
 interface OnlyOfficeEditorProps {
   fileId: string;
@@ -259,7 +279,7 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose, revisionVe
         editorRef.current = null;
       }
 
-      // Clear container content manually instead of letting React handle it
+      // Clear container content manually instead of letting React removal conflicts
       if (containerRef.current) {
         try {
           // Remove all child nodes manually to prevent React removal conflicts
@@ -278,90 +298,161 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose, revisionVe
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md shadow-lg">
-          <h2 className="text-xl font-semibold text-red-800 mb-2">Error Loading Editor</h2>
-          <p className="text-red-600 mb-4">{error}</p>
-          <div className="text-sm text-red-500 mb-4">
-            <p className="font-semibold mb-1">Troubleshooting:</p>
-            <ul className="list-disc list-inside space-y-1">
-              <li>Ensure OnlyOffice is running (port 3600)</li>
-              <li>Check backend is accessible (port 3000)</li>
-              <li>Verify network connectivity</li>
-              <li>Check browser console for details</li>
-            </ul>
-          </div>
+      <Box style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', padding: '1rem' }}>
+        <Alert 
+          icon={<IconAlertCircle size={20} />} 
+          title="Error Loading Editor" 
+          color="red"
+          variant="filled"
+          style={{ maxWidth: '500px' }}
+        >
+          <Text size="sm" mb="md">{error}</Text>
+          <Text size="xs" mb="xs" fw={600}>Troubleshooting:</Text>
+          <Text size="xs" component="ul" style={{ paddingLeft: '1.5rem' }}>
+            <li>Ensure OnlyOffice is running (port 3600)</li>
+            <li>Check backend is accessible (port 3000)</li>
+            <li>Verify network connectivity</li>
+            <li>Check browser console for details</li>
+          </Text>
           {onClose && (
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-            >
+            <Button onClick={onClose} color="red" variant="white" mt="md" fullWidth>
               Close
-            </button>
+            </Button>
           )}
-        </div>
-      </div>
+        </Alert>
+      </Box>
     );
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading {fileName}...</p>
-          <p className="text-sm text-gray-500 mt-2">Initializing editor...</p>
+      <Box style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: '1rem' }}>
+        <Loader size="lg" />
+        <div>
+          <Text size="md" fw={500} ta="center">Loading {fileName}...</Text>
+          <Text size="sm" c="dimmed" ta="center">Initializing editor...</Text>
         </div>
-      </div>
+      </Box>
     );
   }
 
   return (
-    <div className="h-screen flex flex-col bg-white">
-      {/* Revision Mode Banner */}
-      {isRevisionMode && (
-        <div className="bg-amber-500 text-amber-900 px-4 py-2 text-center font-medium">
-          📋 Viewing Version {revisionVersion} (Read-Only) - <button onClick={onClose} className="underline hover:no-underline">Return to current version</button>
-        </div>
-      )}
+    <Box style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'white' }}>
+      {/* Office-style Header with Breadcrumb */}
+      <Paper shadow="xs" p="xs" style={{ borderBottom: '1px solid #e9ecef', borderRadius: 0 }}>
+        <Group justify="space-between" align='center' wrap="nowrap">
+          {/* Left: Breadcrumb Navigation */}
+          <Group gap="xs" style={{ flex: 1, minWidth: 0 }}>
+            <Breadcrumbs 
+              separator="›"
+              separatorMargin="xs"
+              style={{ flexWrap: 'nowrap', overflow: 'hidden' }}
+            >
+
+              
+              <Text size="sm" fw={600} truncate style={{ maxWidth: '300px' }}>
+                {fileName}
+              </Text>
+              
+              {isRevisionMode && (
+                <Badge 
+                  variant="light" 
+                  color="orange" 
+                  size="sm"
+                  leftSection={<IconClock size={12} />}
+                  style={{ textTransform: 'none' }}
+                >
+                  Version {revisionVersion}
+                </Badge>
+              )}
+            </Breadcrumbs>
+            
+            {/* Status Badges */}
+            <Group gap="xs">
+              {!isRevisionMode && currentUser && (
+                <Badge 
+                  variant="dot" 
+                  color="green" 
+                  size="sm"
+                  style={{ textTransform: 'none' }}
+                >
+                  Editing
+                </Badge>
+              )}
+              
+              {isRevisionMode && (
+                <Badge 
+                  variant="light" 
+                  color="gray" 
+                  size="sm"
+                  leftSection={<IconLock size={12} />}
+                  style={{ textTransform: 'none' }}
+                >
+                  Read-only
+                </Badge>
+              )}
+            </Group>
+          </Group>
+          
+          {/* Right: Action Buttons */}
+          <Group gap="xs" wrap="nowrap">
+            {/* User Info */}
+            {currentUser && !isRevisionMode && (
+              <Group gap="xs" style={{ 
+                padding: '0.25rem 0.75rem', 
+                background: '#f8f9fa', 
+                borderRadius: '6px',
+                border: '1px solid #e9ecef'
+              }}>
+                <Avatar 
+                  size="sm" 
+                  color="blue" 
+                  radius="xl"
+                  style={{ fontWeight: 600 }}
+                >
+                  {currentUser.name.charAt(0).toUpperCase()}
+                </Avatar>
+                <Text size="xs" fw={500} style={{ whiteSpace: 'nowrap' }}>
+                  {currentUser.name}
+                </Text>
+              </Group>
+            )}
+            
+            {/* Version History Button */}
+            {!isRevisionMode && (
+              <Button
+                variant="default"
+                size="sm"
+                leftSection={<IconHistory size={16} />}
+                onClick={() => setShowHistory(true)}
+              >
+                Version History
+              </Button>
+            )}
+            
+            {/* Close/Back Button */}
+            {onClose && (
+              <Button
+                variant="default"
+                size="sm"
+                leftSection={isRevisionMode ? <IconArrowLeft size={16} /> : <IconX size={16} />}
+                onClick={onClose}
+              >
+                {isRevisionMode ? 'Back to Current' : 'Close'}
+              </Button>
+            )}
+          </Group>
+        </Group>
+      </Paper>
       
-      <div className="bg-gray-800 text-white px-4 py-3 flex justify-between items-center shadow-md">
-        <div className="flex items-center gap-4">
-          <h1 className="text-lg font-semibold">
-            {fileName}
-            {isRevisionMode && <span className="text-amber-300 ml-2">(v{revisionVersion})</span>}
-          </h1>
-          {currentUser && !isRevisionMode && (
-            <span className="text-sm text-gray-300 flex items-center gap-1">
-              <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-              Editing as: {currentUser.name}
-            </span>
-          )}
-        </div>
-        <div className="flex gap-2">
-          {!isRevisionMode && (
-            <button
-              onClick={() => setShowHistory(true)}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors flex items-center gap-2"
-            >
-              📜 Versions
-            </button>
-          )}
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
-            >
-              {isRevisionMode ? 'Back to Current' : 'Close'}
-            </button>
-          )}
-        </div>
-      </div>
-      {/* Use a ref to prevent React from managing this container's children */}
-      <div 
+      {/* Editor Container */}
+      <Box 
         ref={containerRef}
-        className="flex-1" 
-        style={{ width: '100%', height: 'calc(100vh - 60px)' }}
+        style={{ 
+          flex: 1, 
+          width: '100%', 
+          height: 'calc(100vh - 60px)' 
+        }}
         suppressHydrationWarning
       />
       
@@ -375,6 +466,6 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose, revisionVe
           navigate(`/document/${fileId}/revision/${version}`);
         }}
       />
-    </div>
+    </Box>
   );
 }

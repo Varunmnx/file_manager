@@ -1,5 +1,6 @@
 import { UploadedFile } from "@/types/file.types";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import FileFolderTable from "./components/Table/FileFolderTable"; 
 import { Anchor, Breadcrumbs, Flex } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
@@ -9,6 +10,8 @@ import { useChunkedUpload } from "./context/chunked-upload.context";
 import useDeleteAll from "./hooks/useDeleteAll";
 import CreateFolderModal from "./components/Modal/CreateFolderModal";
 import useCreateFolder from "./hooks/createFolder";
+import CreateFileModal from "./components/Modal/CreateFileModal";
+import useCreateFile from "./hooks/createFile";
 import { useNavigate, useParams } from "react-router-dom";
 import { useDragAndDrop } from "./hooks/useDragDrop";
 import useFileGetStatus from "./hooks/useFileGetStatus";
@@ -35,9 +38,15 @@ const Page = () => {
     isCreateNewFolderOpened,
     { open: openCreateNewFolder, close: closeCreateNewFolder },
   ] = useDisclosure(false);
+  
+  const [
+    isCreateNewFileOpened,
+    { open: openCreateNewFile, close: closeCreateNewFile },
+  ] = useDisclosure(false);
 
   const deleteAllMutation = useDeleteAll();
   const createFolderMutation = useCreateFolder();
+  const createFileMutation = useCreateFile();
 
   const { isDragging } = useDragAndDrop({
     onFilesDropped: (files) =>{
@@ -92,6 +101,36 @@ const Page = () => {
           refetch();
           closeCreateNewFolder();
         },
+        onError: (error: any) => {
+            if (error?.status === 409 || error?.response?.status === 409) {
+                toast.error(`Folder "${folderName}" already exists in this location`);
+            } else {
+                toast.error("Failed to create folder");
+            }
+        }
+      },
+    );
+  };
+
+  const handleCreateNewFile = (fileName: string, parentId?: string) => {
+    if (!fileName) return;
+    createFileMutation.mutate(
+      {
+        fileName,
+        parent: parentId,
+      },
+      {
+        onSuccess: () => {
+          refetch();
+          closeCreateNewFile();
+        },
+        onError: (error: any) => {
+            if (error?.status === 409 || error?.response?.status === 409) {
+                toast.error(`File "${fileName}" already exists in this location`);
+            } else {
+                toast.error("Failed to create file");
+            }
+        }
       },
     );
   };
@@ -161,6 +200,13 @@ const Page = () => {
           close={closeCreateNewFolder}
         />
       )}
+      {isCreateNewFileOpened && (
+        <CreateFileModal
+          onSubmit={handleCreateNewFile}
+          opened={isCreateNewFileOpened}
+          close={closeCreateNewFile}
+        />
+      )}
       {
         uploadQueue?.filter((file) => {
           return (
@@ -174,7 +220,9 @@ const Page = () => {
         <Flex justify={"right"} align={"center"}>
           <Profile  deleteAllUploads={deleteAllUploads}
             onResourceUpload={open}
-            openCreateNewFolder={openCreateNewFolder} />
+            openCreateNewFolder={openCreateNewFolder} 
+            openCreateNewFile={openCreateNewFile}
+          />
         </Flex>
         {
           // eslint-disable-next-line no-constant-binary-expression, no-unsafe-optional-chaining
@@ -211,11 +259,12 @@ const Page = () => {
 };
 
 const FileFolderLocation = ({ folderIds }: { folderIds: string[] }) => {
+  const navigate = useNavigate()
   return (
     <Breadcrumbs>
       <Anchor href="/">Home</Anchor>
       {folderIds.map((folderId: string) => (
-        <Anchor key={folderId} href={`/folder/${folderId}`}>{folderId}</Anchor>
+        <Anchor key={folderId} onClick={()=>navigate(`/folder/${folderId}`)}>{folderId}</Anchor>
       ))}
     </Breadcrumbs>
   );
