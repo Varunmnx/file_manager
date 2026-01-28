@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Res, Body, StreamableFile, HttpStatus, UseGuards, Req, Query } from '@nestjs/common';
+import { Controller, Get, Post, Param, Res, Body, StreamableFile, HttpStatus, UseGuards, Req, Query, Logger } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { FileFolderRepository } from '../file_upload_v3/repositories/file-folder.repository';
 import { FileRevisionRepository } from './repositories/file-revision.repository';
@@ -7,6 +7,9 @@ import { join, extname } from 'path';
 import { Types } from 'mongoose';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UsersService } from '../auth/service/auth.service';
+import { OnlyOfficeService } from './onlyoffice.service';
+import { CallbackAuthGuard } from './guards/callback-auth.guard';
+import { DownloadAuthGuard } from './guards/download-auth.guard';
 
 // Interface for the authenticated user in the request
 interface AuthenticatedRequest extends Request {
@@ -18,6 +21,7 @@ interface AuthenticatedRequest extends Request {
 
 @Controller('onlyoffice')
 export class OnlyOfficeController {
+  private readonly logger = new Logger(OnlyOfficeController.name);
   private readonly uploadDir = join(process.cwd(), 'uploads');
   private readonly revisionsDir = join(process.cwd(), 'uploads', 'revisions');
 
@@ -25,6 +29,7 @@ export class OnlyOfficeController {
     private readonly fileFolderRepository: FileFolderRepository,
     private readonly fileRevisionRepository: FileRevisionRepository,
     private readonly usersService: UsersService,
+    private readonly onlyOfficeService: OnlyOfficeService,
   ) {
     // Ensure revisions directory exists
     if (!existsSync(this.revisionsDir)) {
@@ -32,24 +37,24 @@ export class OnlyOfficeController {
     }
   }
 
-  // Serve file for OnlyOffice to download
+  // Serve file for OnlyOffice to download (Protected by DownloadAuthGuard)
+  @UseGuards(DownloadAuthGuard)
   @Get('download/:fileId')
   async downloadFile(@Param('fileId') fileId: string, @Res({ passthrough: true }) res: Response) {
-    console.log(`[OnlyOffice] Download request for fileId: ${fileId}`);
+    this.logger.log(`[OnlyOffice] Download request for fileId: ${fileId}`);
 
     try {
       const file = await this.fileFolderRepository.findById(fileId);
 
       if (!file) {
-        console.error(`[OnlyOffice] File not found in database: ${fileId}`);
+        this.logger.error(`[OnlyOffice] File not found in database: ${fileId}`);
         return res.status(404).json({ error: 'File not found' });
       }
 
       const filePath = join(this.uploadDir, file.fileName);
-      console.log(`[OnlyOffice] Looking for file at path: ${filePath}`);
-
+      
       if (!existsSync(filePath)) {
-        console.error(`[OnlyOffice] File not found on disk: ${filePath}`);
+        this.logger.error(`[OnlyOffice] File not found on disk: ${filePath}`);
         return res.status(404).json({ error: 'File not found on disk' });
       }
 
@@ -78,27 +83,26 @@ export class OnlyOfficeController {
         'Content-Length': fileContents.length.toString(),
       });
 
-      console.log(`[OnlyOffice] Serving file: ${fileName} (${fileContents.length} bytes)`);
+      this.logger.log(`[OnlyOffice] Serving file: ${fileName} (${fileContents.length} bytes)`);
       return new StreamableFile(fileContents);
     } catch (error) {
-      // Check if it's a NotFoundException (file not in database)
       if (error.status === 404 || error.name === 'NotFoundException') {
-        console.error(`[OnlyOffice] File not found in database: ${fileId}`);
         return res.status(404).json({ error: 'File not found in database' });
       }
-      console.error(`[OnlyOffice] Error downloading file ${fileId}:`, error);
+      this.logger.error(`[OnlyOffice] Error downloading file ${fileId}:`, error);
       return res.status(500).json({ error: 'Failed to download file', details: error.message });
     }
   }
 
-  // Download a specific revision
+  // Download a specific revision (Protected by DownloadAuthGuard)
+  @UseGuards(DownloadAuthGuard)
   @Get('download/:fileId/revision/:version')
   async downloadRevision(
     @Param('fileId') fileId: string,
     @Param('version') version: string,
     @Res({ passthrough: true }) res: Response,
   ) {
-    console.log(`[OnlyOffice] Download revision request: fileId=${fileId}, version=${version}`);
+    this.logger.log(`[OnlyOffice] Download revision request: fileId=${fileId}, version=${version}`);
 
     try {
       const revision = await this.fileRevisionRepository.findByVersion(fileId, parseInt(version));
@@ -137,77 +141,63 @@ export class OnlyOfficeController {
 
       return new StreamableFile(fileContents);
     } catch (error) {
-      console.error(`[OnlyOffice] Error downloading revision:`, error);
+      this.logger.error(`[OnlyOffice] Error downloading revision:`, error);
       return res.status(500).json({ error: 'Failed to download revision' });
     }
   }
 
-  // Callback endpoint for OnlyOffice to save changes
+  // Callback endpoint for OnlyOffice to save changes (Protected by CallbackAuthGuard)
+  // This validates that the request truly comes from the document server
+  @UseGuards(CallbackAuthGuard)
   @Post('callback/:fileId')
   async callback(@Param('fileId') fileId: string, @Body() body: any, @Res() res: Response) {
-    console.log('=== OnlyOffice Callback ===');
-    console.log('FileId:', fileId);
-    console.log('Status:', body.status);
-    console.log('Body:', JSON.stringify(body, null, 2));
-
+    this.logger.log('=== OnlyOffice Callback ===');
+    this.logger.log(`FileId: ${fileId}, Status: ${body.status}`);
+    
     // Status codes from OnlyOffice:
-    // 0 - document not found
-    // 1 - document being edited
     // 2 - document ready for saving
-    // 3 - document saving error
-    // 4 - document closed with no changes
     // 6 - document being edited, but current document state is saved (force save)
-    // 7 - error has occurred while force saving the document
-
     if (body.status === 2 || body.status === 6) {
-      console.log(`[OnlyOffice] Processing save for file ${fileId}, status: ${body.status}`);
+      this.logger.log(`[OnlyOffice] Processing save for file ${fileId}, status: ${body.status}`);
       
-      // Download the saved file from OnlyOffice
       const file = await this.fileFolderRepository.findById(fileId);
-      console.log('[OnlyOffice] Found file:', file ? `${file.fileName} (v${file.version})` : 'NOT FOUND');
       
       if (!file) {
-        console.error(`[OnlyOffice] File not found: ${fileId}`);
+        this.logger.error(`[OnlyOffice] File not found: ${fileId}`);
         return res.status(HttpStatus.OK).json({ error: 0 });
       }
 
       try {
-        console.log(`[OnlyOffice] Downloading from: ${body.url}`);
+        this.logger.log(`[OnlyOffice] Downloading from: ${body.url}`);
+        
+        // Note: OnlyOffice often does NOT sign the internal download URL
+        // So we just fetch it directly from the container
         const response = await fetch(body.url);
         
         if (!response.ok) {
-          console.error(`[OnlyOffice] Failed to download file from OnlyOffice: ${response.status}`);
+          this.logger.error(`[OnlyOffice] Failed to download file from OnlyOffice: ${response.status}`);
           return res.status(HttpStatus.OK).json({ error: 0 });
         }
         
         const buffer = Buffer.from(await response.arrayBuffer());
-        console.log(`[OnlyOffice] Downloaded ${buffer.length} bytes`);
-
         const currentFilePath = join(this.uploadDir, file.fileName);
 
         // Get the current version of the file (default to 1 if not set)
         const currentVersion = file.version || 1;
-        console.log(`[OnlyOffice] Current version: ${currentVersion}`);
 
         // Create revision of the current file before overwriting
-        // This revision represents the state BEFORE the new changes
         if (existsSync(currentFilePath)) {
           const ext = extname(file.fileName);
-          // Revision file name matches its version number
           const revisionFileName = `${fileId}_v${currentVersion}${ext}`;
           const revisionPath = join(this.revisionsDir, revisionFileName);
 
-          // Copy current file to revisions
           copyFileSync(currentFilePath, revisionPath);
-          console.log(`[OnlyOffice] Created revision file: ${revisionFileName}`);
+          this.logger.log(`[OnlyOffice] Created revision file: ${revisionFileName}`);
 
-          // Get user info from callback - OnlyOffice sends the user name that was set in config
           const userName = body.users?.[0] || 'Unknown User';
           const userId = body.actions?.[0]?.userid || 'unknown';
-          console.log(`[OnlyOffice] User: ${userName} (${userId})`);
 
-          // Create revision record with the CURRENT version number
-          const revisionRecord = await this.fileRevisionRepository.create({
+          await this.fileRevisionRepository.create({
             fileId: new Types.ObjectId(fileId),
             version: currentVersion,
             revisionFileName,
@@ -219,37 +209,29 @@ export class OnlyOfficeController {
             serverVersion: body.history?.serverVersion,
             documentHash: body.history?.changes?.[0]?.documentSha256,
           });
-
-          console.log(`[OnlyOffice] Created revision record: ${revisionRecord._id} for v${currentVersion}`);
-        } else {
-          console.log(`[OnlyOffice] No existing file found at: ${currentFilePath}`);
         }
 
         // Save the new version
         writeFileSync(currentFilePath, buffer);
-        console.log(`[OnlyOffice] Saved new file content to: ${currentFilePath}`);
+        this.logger.log(`[OnlyOffice] Saved new file content to: ${currentFilePath}`);
 
-        // Increment file version (new content is now the next version)
+        // Increment file version
         const newVersion = currentVersion + 1;
-        const updatedFile = await this.fileFolderRepository.update(file._id, {
+        await this.fileFolderRepository.update(file._id, {
           version: newVersion,
           lastActivity: new Date(),
           fileSize: buffer.length,
         });
 
-        console.log(`[OnlyOffice] Updated file version: ${currentVersion} -> ${newVersion}`);
-        console.log(`[OnlyOffice] File saved successfully: ${file.fileName}`);
+        this.logger.log(`[OnlyOffice] File saved successfully: ${file.fileName} (v${newVersion})`);
         
         return res.status(HttpStatus.OK).json({ error: 0 });
       } catch (error) {
-        console.error('[OnlyOffice] Error saving file:', error);
-        // Still return success to OnlyOffice to prevent retries
+        this.logger.error('[OnlyOffice] Error saving file:', error);
         return res.status(HttpStatus.OK).json({ error: 0 });
       }
     }
 
-    // For other statuses, just acknowledge
-    console.log(`[OnlyOffice] Status ${body.status} - no action needed`);
     return res.status(HttpStatus.OK).json({ error: 0 });
   }
 
@@ -258,37 +240,33 @@ export class OnlyOfficeController {
   @Get('revisions/:fileId')
   async getRevisions(@Param('fileId') fileId: string) {
     try {
-      console.log(`[OnlyOffice] Getting revisions for file: ${fileId}`);
-      
       const file = await this.fileFolderRepository.findById(fileId);
-      if (!file) {
-        console.error(`[OnlyOffice] File not found: ${fileId}`);
-        throw new Error('File not found');
-      }
-
-      console.log(`[OnlyOffice] File found: ${file.fileName}, version: ${file.version}`);
+      if (!file) throw new Error('File not found');
 
       const revisions = await this.fileRevisionRepository.findByFileId(fileId);
-      console.log(`[OnlyOffice] Found ${revisions.length} revisions`);
 
-      const result = {
-        fileId,
-        fileName: file.fileName.split('/').pop() || file.fileName,
-        currentVersion: file.version || 1,
-        revisions: revisions.map((rev) => ({
+      // Generate secure download tokens for revisions
+      const revisionList = revisions.map((rev) => {
+        const token = this.onlyOfficeService.generateDownloadToken(fileId, rev.version);
+        return {
           id: rev._id.toString(),
           version: rev.version,
           savedBy: rev.savedBy,
           createdAt: rev.createdAt,
           fileSize: rev.fileSize,
-          downloadUrl: `/onlyoffice/download/${fileId}/revision/${rev.version}`,
-        })),
-      };
+          // Append token to download URL
+          downloadUrl: `/onlyoffice/download/${fileId}/revision/${rev.version}?token=${token}`,
+        };
+      });
 
-      console.log(`[OnlyOffice] Returning:`, JSON.stringify(result, null, 2));
-      return result;
+      return {
+        fileId,
+        fileName: file.fileName.split('/').pop() || file.fileName,
+        currentVersion: file.version || 1,
+        revisions: revisionList,
+      };
     } catch (error) {
-      console.error('[OnlyOffice] Error getting revisions:', error);
+      this.logger.error('[OnlyOffice] Error getting revisions:', error);
       throw error;
     }
   }
@@ -299,20 +277,11 @@ export class OnlyOfficeController {
   async viewRevision(@Param('fileId') fileId: string, @Param('version') version: string) {
     try {
       const file = await this.fileFolderRepository.findById(fileId);
-      if (!file) {
-        throw new Error('File not found');
-      }
+      if (!file) throw new Error('File not found');
 
       const targetVersion = parseInt(version);
       const revision = await this.fileRevisionRepository.findByVersion(fileId, targetVersion);
-      if (!revision) {
-        throw new Error('Revision not found');
-      }
-
-      const revisionPath = join(this.revisionsDir, revision.revisionFileName);
-      if (!existsSync(revisionPath)) {
-        throw new Error('Revision file not found on disk');
-      }
+      if (!revision) throw new Error('Revision not found');
 
       const fileName = file.fileName.split('/').pop() || file.fileName;
       const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
@@ -325,10 +294,10 @@ export class OnlyOfficeController {
         documentType = 'slide';
       }
 
-      // backendUrl must be accessible by OnlyOffice container
-      const backendUrl = `http://host.docker.internal:3000`;
-
-      // Return read-only config for viewing the revision
+      // Generate secure tokens
+      const downloadToken = this.onlyOfficeService.generateDownloadToken(fileId, targetVersion);
+      const backendUrl = `http://host.docker.internal:3000`; // Accessible by OnlyOffice container
+      
       const config = {
         width: '100%',
         height: '100%',
@@ -337,7 +306,8 @@ export class OnlyOfficeController {
           fileType: fileExtension,
           key: `${fileId}_revision_v${targetVersion}_${Date.now()}`,
           title: `${fileName} (Version ${targetVersion})`,
-          url: `${backendUrl}/onlyoffice/download/${fileId}/revision/${targetVersion}`,
+          // Add token to the internal download URL
+          url: `${backendUrl}/onlyoffice/download/${fileId}/revision/${targetVersion}?token=${downloadToken}`,
           permissions: {
             edit: false,
             download: true,
@@ -357,13 +327,19 @@ export class OnlyOfficeController {
             zoom: 100,
           },
         },
-        token: '',
+        // IMPORTANT: Must be empty string if JWT is disabled in OnlyOffice, otherwise signed token
+        token: '', 
       };
+
+      // Sign the config if JWT is enabled
+      if (this.onlyOfficeService.isJwtEnabled()) {
+        config.token = this.onlyOfficeService.signConfig(config);
+      }
 
       return {
         config,
         onlyOfficeUrl: 'http://172.31.0.1:3600',
-        token: '',
+        token: config.token,
         revision: {
           version: targetVersion,
           savedBy: revision.savedBy,
@@ -372,7 +348,7 @@ export class OnlyOfficeController {
         },
       };
     } catch (error) {
-      console.error('[OnlyOffice] Error getting revision view config:', error);
+      this.logger.error('[OnlyOffice] Error getting revision view config:', error);
       throw error;
     }
   }
@@ -382,12 +358,10 @@ export class OnlyOfficeController {
   @Get('config/:fileId')
   async getConfig(@Param('fileId') fileId: string, @Req() req: AuthenticatedRequest) {
     const file = await this.fileFolderRepository.findById(fileId);
-    console.log('found file', file);
     if (!file) {
       throw new Error('File not found');
     }
 
-    // Get the authenticated user's full details
     const currentUser = await this.usersService.findByEmail(req.user.email);
     const userName = currentUser 
       ? `${currentUser.firstName} ${currentUser.lastName}`.trim() 
@@ -397,7 +371,6 @@ export class OnlyOfficeController {
     const fileName = file.fileName.split('/').pop() || file.fileName;
     const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
 
-    // Determine document type
     let documentType = 'word';
     if (['xls', 'xlsx', 'ods', 'csv'].includes(fileExtension)) {
       documentType = 'cell';
@@ -405,8 +378,8 @@ export class OnlyOfficeController {
       documentType = 'slide';
     }
 
-    // backendUrl must be accessible by OnlyOffice container
-    // When OnlyOffice is in Docker and backend is on Host, use host.docker.internal
+    // Generate secure tokens
+    const downloadToken = this.onlyOfficeService.generateDownloadToken(fileId);
     const backendUrl = `http://host.docker.internal:3000`;
 
     const config = {
@@ -417,7 +390,8 @@ export class OnlyOfficeController {
         fileType: fileExtension,
         key: `${fileId}_${file.version || 1}_${Date.now()}`,
         title: fileName,
-        url: `${backendUrl}/onlyoffice/download/${fileId}`,
+        // Add token to download URL
+        url: `${backendUrl}/onlyoffice/download/${fileId}?token=${downloadToken}`,
         permissions: {
           edit: true,
           download: true,
@@ -437,13 +411,18 @@ export class OnlyOfficeController {
           autosave: true,
         },
       },
-      token: '', // Empty token as JWT is disabled in OnlyOffice container
+      token: '',
     };
+
+    // Sign the config if JWT is enabled
+    if (this.onlyOfficeService.isJwtEnabled()) {
+      config.token = this.onlyOfficeService.signConfig(config);
+    }
 
     return {
       config,
       onlyOfficeUrl: 'http://172.31.0.1:3600',
-      token: '',
+      token: config.token,
       user: {
         id: userId,
         name: userName,

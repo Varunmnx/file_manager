@@ -14,6 +14,10 @@ services:
       - F:/vf_manager/onlyoffice-docker/lib:/var/lib/onlyoffice
       - F:/vf_manager/onlyoffice-docker/db:/var/lib/postgresql
     environment:
-      - JWT_ENABLED=false
+      - JWT_ENABLED=true
+      - JWT_SECRET=supersecretjwtonlyofficekey
+      - JWT_HEADER=Authorization
+      - JWT_IN_BODY=true
+      - WOPI_ENABLED=true
       - ALLOW_PRIVATE_IP_ADDRESS=true
       - ALLOW_META_IP_ADDRESS=true
