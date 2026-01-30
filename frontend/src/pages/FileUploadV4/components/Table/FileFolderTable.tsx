@@ -1,18 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Checkbox, Table, ActionIcon } from "@mantine/core";
+import { Checkbox, Table, ActionIcon, Avatar, Group, Text } from "@mantine/core";
 import Icon from "@/components/Icon";
-import { UploadedFile } from "@/types/file.types";
+import { UploadedFile, CreatorInfo } from "@/types/file.types";
 import { FileTypeIconMapKeys } from "@/utils/fileTypeIcons";
 import { checkAndRetrieveExtension } from "../../utils/getFileIcon";
 import { formatBytes } from "@/utils/formatBytes";
 import { getShortDate } from "@/utils/getDateTime";
-import { IconFolder, IconInfoCircle, IconFileText, IconHistory } from "@tabler/icons-react";
+import { IconFolder, IconInfoCircle, IconFileText, IconHistory, IconTrash } from "@tabler/icons-react";
 import { MouseEvent, useState } from "react";
 import useFileGetStatus from "../../hooks/useFileGetStatus";
 import { useChunkedUpload } from "../../context/chunked-upload.context";
 import { useNavigate } from "react-router-dom";
 import { RevisionHistory } from "@/components/RevisionHistory";
-const TrashIcon = "https://www.svgrepo.com/show/533014/trash-blank.svg";
+
 
 interface Props {
   allSelected: boolean;
@@ -24,6 +24,8 @@ interface Props {
   handleDeleteFile: (uploadId: string) => void;
   onFileFolderRowClick?: (entityId: string,isDirectory: boolean) => void;
 }
+
+import useUpdateActivity from "../../hooks/useUpdateActivity";
 
 // Helper function to check if file is supported by OnlyOffice
 const isSupportedDocument = (fileName: string): boolean => {
@@ -45,7 +47,8 @@ const FileFolderTable = (props: Props) => {
   } = props;
 
   const getFileDetailsMutation = useFileGetStatus()
-  const {setFileDetails} = useChunkedUpload()
+  const updateActivityMutation = useUpdateActivity()
+  const {setFileDetails, refetchFilesAndFolders} = useChunkedUpload()
   const navigate = useNavigate();
   
   // State for revision history modal
@@ -55,6 +58,14 @@ const FileFolderTable = (props: Props) => {
     e.stopPropagation();
     e.preventDefault();
     console.log(id)
+    
+    // Update last viewed
+    updateActivityMutation.mutate({ uploadId: id }, {
+      onSuccess: () => {
+        refetchFilesAndFolders();
+      }
+    });
+
     getFileDetailsMutation.mutate(id,{
 
       onSuccess: (data) => {
@@ -67,7 +78,14 @@ const FileFolderTable = (props: Props) => {
   const handleOpenInOnlyOffice = (e: MouseEvent<HTMLButtonElement, MouseEvent>, fileId: string) => {
     e.stopPropagation();
     e.preventDefault();
-    navigate(`/document/${fileId}`);
+    
+    // Update last opened
+    updateActivityMutation.mutate({ uploadId: fileId }, {
+      onSuccess: () => {
+        refetchFilesAndFolders();
+        navigate(`/document/${fileId}`);
+      }
+    });
   };
 
   const handleShowHistory = (e: MouseEvent<HTMLButtonElement, MouseEvent>, file: UploadedFile) => {
@@ -77,6 +95,45 @@ const FileFolderTable = (props: Props) => {
       id: file._id as string,
       name: file.fileName.split('/').pop() || file.fileName
     });
+  };
+
+  const getInitials = (firstName: string, lastName: string) => {
+    const first = firstName?.[0]?.toUpperCase() || '';
+    const last = lastName?.[0]?.toUpperCase() || '';
+    return first + last || '?';
+  };
+
+  const renderUser = (user?: CreatorInfo | string, date?: Date) => {
+    if (!user) return <Text size="sm">-</Text>;
+    
+    // Handle string (legacy or simple ID)
+    if (typeof user === 'string') {
+        return (
+          <div className="flex flex-col">
+            <Text size="sm">{user}</Text>
+            {date && <Text size="xs" c="dimmed">{getShortDate(date as unknown as string)}</Text>}
+          </div>
+        );
+    }
+
+    return (
+        <Group gap="xs">
+            <Avatar 
+                src={user.picture} 
+                alt={user.firstName} 
+                radius="xl" 
+                size="sm"
+                color="blue"
+            >
+                {getInitials(user.firstName, user.lastName)}
+            </Avatar>
+            <div className="flex flex-col">
+                <Text size="sm" fw={500}>{user.firstName} {user.lastName}</Text>
+                {date && <Text size="xs" c="dimmed">{getShortDate(date as unknown as string)}</Text>}
+                {!date && <Text size="xs" c="dimmed">{user.email}</Text>}
+            </div>
+        </Group>
+    );
   };
 
   return (
@@ -94,7 +151,9 @@ const FileFolderTable = (props: Props) => {
           <Table.Th>File Name</Table.Th>
           <Table.Th>File Size</Table.Th>
           <Table.Th>Uploaded At</Table.Th>
-          <Table.Th style={{ width: "60px" }}>Actions</Table.Th>
+          <Table.Th>Created By</Table.Th>
+          <Table.Th>Last Viewed</Table.Th>
+          <Table.Th style={{ width: "120px" }}>Actions</Table.Th>
         </Table.Tr>
       </Table.Thead>
       <Table.Tbody>
@@ -112,28 +171,41 @@ const FileFolderTable = (props: Props) => {
               />
             </Table.Td>
             <Table.Td>
-              {
-                file.isFolder ? (
-                  <IconFolder
-                    size={24} 
-                  />
-                ) : (
-                  <Icon
-                    iconSize={24}
-                    scaleFactor="_1.5x"
-                    extension={
-                      checkAndRetrieveExtension(
-                        file.fileName,
-                      ) as FileTypeIconMapKeys
-                    }
-                  />
-                )
-              } 
+               <Avatar 
+                  size="md" 
+                  radius="sm" 
+                  className="cursor-pointer"
+                  color="indigo"
+                  variant="light"
+               >
+                 {
+                    file.isFolder ? (
+                       <IconFolder size={24} fill="var(--mantine-color-yellow-5)" stroke={0.5} color="black" />
+                    ) : (
+                       <Icon 
+                          extension={checkAndRetrieveExtension(file.fileName) as FileTypeIconMapKeys}
+                          iconSize={24}
+                          scaleFactor="_1.5x" 
+                       />
+                    )
+                 }
+               </Avatar>
             </Table.Td>
             <Table.Td>{file.fileName?.split("/").pop()} </Table.Td>
-            <Table.Td className="flex items-center justify-start gap-20">{formatBytes(file.fileSize)}  <IconInfoCircle className="cursor-pointer" onClick={(e)=>handleMoreInformation(e as any ,file._id  as string)} size={16}/></Table.Td>
+            <Table.Td>
+              <div className="flex items-center justify-start gap-2">
+                {formatBytes(file.fileSize)}
+                <IconInfoCircle className="cursor-pointer" onClick={(e)=>handleMoreInformation(e as any ,file._id  as string)} size={16}/>
+              </div>
+            </Table.Td>
             <Table.Td>
               {getShortDate(file?.createdAt as unknown as string)}
+            </Table.Td>
+            <Table.Td>
+              {renderUser(file.createdBy)}
+            </Table.Td>
+            <Table.Td>
+              {renderUser(file.lastViewedBy, file.lastViewedAt)}
             </Table.Td>
             <Table.Td>
               <div className="flex gap-2">
@@ -158,11 +230,7 @@ const FileFolderTable = (props: Props) => {
                   </>
                 )}
                 <ActionIcon onClick={()=>handleDeleteFile(file._id as string)} variant="subtle" color="red">
-                  <img
-                    src={TrashIcon}
-                    alt="delete"
-                    style={{ width: "20px", height: "20px" }}
-                  />
+                  <IconTrash size={20} />
                 </ActionIcon>
               </div>
             </Table.Td>

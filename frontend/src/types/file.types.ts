@@ -1,4 +1,12 @@
-export interface UploadedFile  { 
+export interface CreatorInfo {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  picture?: string;
+}
+
+export interface UploadedFile {
   fileName: string;
   fileSize: number;
   totalChunks: number;
@@ -12,4 +20,10 @@ export interface UploadedFile  {
   parents?: string[]
   children?: string[]
   _id?: string
+  createdBy?: CreatorInfo | string;
+  lastViewedBy?: CreatorInfo | string;
+  lastViewedAt?: Date;
+  lastOpenedBy?: CreatorInfo | string;
+  lastOpenedAt?: Date;
+  thumbnail?: string;
 }

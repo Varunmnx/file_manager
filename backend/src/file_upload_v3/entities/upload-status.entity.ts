@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document, Types, SchemaTypes } from 'mongoose';
 import { EntityNames } from 'src/db/entity-names';
+import { User } from 'src/auth/entities/user.entity';
 
 export type UploadDocument = UploadEntity & Document;
 
@@ -44,14 +45,26 @@ export class UploadEntity {
   @Prop({ name: 'chunkSize', required: true })
   public chunkSize: number;
 
-  @Prop({ type: Date, name: 'createdAt', default: ()=>new Date() })
+  @Prop({ type: Date, name: 'createdAt', default: () => new Date() })
   public createdAt: Date;
 
-  @Prop({ type: Date, name: 'lastActivity', default: ()=>new Date() })
+  @Prop({ type: Date, name: 'lastActivity', default: () => new Date() })
   public lastActivity: Date;
 
   @Prop({ type: String, name: 'fileHash' })
   public fileHash: string;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', required: false })
+  public createdBy: User | Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', required: false })
+  public lastViewedBy: User | Types.ObjectId;
+
+  @Prop({ type: Date })
+  public lastViewedAt: Date;
+
+  @Prop({ type: String, required: false })
+  public thumbnail: string;
 
   @Prop({ type: 'number', name: 'version', default: 1 })
   public version = 1;
@@ -76,6 +89,10 @@ export class UploadEntity {
     builder.children = this.children;
     builder.isFolder = this.isFolder;
     builder.fileHash = this.fileHash;
+    builder.createdBy = this.createdBy;
+    builder.lastViewedBy = this.lastViewedBy;
+    builder.lastViewedAt = this.lastViewedAt;
+    builder.thumbnail = this.thumbnail;
 
     return builder;
   }
@@ -94,6 +111,10 @@ export class UploadEntity {
     children: Types.ObjectId[];
     isFolder: boolean;
     fileHash: string;
+    createdBy: User | Types.ObjectId;
+    lastViewedBy: User | Types.ObjectId;
+    lastViewedAt: Date;
+    thumbnail: string;
 
     public setFileName(value: string) {
       this.fileName = value;
@@ -130,10 +151,26 @@ export class UploadEntity {
       return this;
     }
 
+    public setLastViewedBy(value: User | Types.ObjectId) {
+      this.lastViewedBy = value;
+      return this;
+    }
+
+    public setLastViewedAt(value: Date) {
+      this.lastViewedAt = value;
+      return this;
+    }
+
+    public setThumbnail(value: string) {
+      this.thumbnail = value;
+      return this;
+    }
+
     public setParents(value: Types.ObjectId[]) {
       this.parents = value;
       return this;
     }
+
 
     public setChildren(value: Types.ObjectId[]) {
       this.children = value;
@@ -147,6 +184,15 @@ export class UploadEntity {
 
     public setFileHash(value: string) {
       this.fileHash = value;
+      return this;
+    }
+
+    public setCreatedBy(value: User | Types.ObjectId | string) {
+      if (typeof value === 'string') {
+        this.createdBy = new Types.ObjectId(value);
+      } else {
+        this.createdBy = value;
+      }
       return this;
     }
 
@@ -172,6 +218,10 @@ export class UploadEntity {
       e.children = this.children;
       e.isFolder = this.isFolder;
       e.fileHash = this.fileHash;
+      e.createdBy = this.createdBy;
+      e.lastViewedBy = this.lastViewedBy;
+      e.lastViewedAt = this.lastViewedAt;
+      e.thumbnail = this.thumbnail;
 
       return e;
     }

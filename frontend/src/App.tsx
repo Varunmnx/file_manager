@@ -22,10 +22,7 @@ function App() {
     const skipFor = ["/signin", "/signup", "/auth/google/callback"];
     setAuthenticated(isTknValid ? "success" : "failed");
     if (skipFor.includes(window.location.pathname)) return;
-    if (!tkn) {
-      window.location.href = "/signin";
-    }
-    if (!isTknValid) {
+    if (!tkn || !isTknValid) {
       window.location.href = "/signin";
     }
   }, []);

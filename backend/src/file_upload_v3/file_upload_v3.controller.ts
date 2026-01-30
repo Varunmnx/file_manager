@@ -11,53 +11,66 @@ import {
   BadRequestException,
   Query,
   Put,
-  UseGuards
+  UseGuards,
+  Request,
+  Res
 } from '@nestjs/common';
+import { Response } from 'express';
+import { join } from 'path';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UploadPoolService } from './services/file_upload_v3.service';
 import { InitiateUploadDto, UploadChunkDto, CompleteUploadDto } from './dto/upload.dto';
-import { Controller } from '@nestjs/common'; 
+import { Controller } from '@nestjs/common';
 import { FileSizeValidationPipe } from './validation';
 import { CreateFolderDto } from './dto/create-folder.dto';
 import { CreateFileDto } from './dto/create-file.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
-@UseGuards(JwtAuthGuard)
+// @UseGuards(JwtAuthGuard)
 @Controller('upload')
 export class UploadController {
   constructor(private readonly uploadPoolService: UploadPoolService) { }
-  
+
   @Get("all")
-  async getAll(@Query("folderId") folderId: string) { 
-    if(folderId) return await this.uploadPoolService.getAllUploadsUnderFolder(folderId)
-    const allSessions =  await this.uploadPoolService.getAllUploads();
+  @UseGuards(JwtAuthGuard)
+  async getAll(@Query("folderId") folderId: string) {
+    if (folderId) return await this.uploadPoolService.getAllUploadsUnderFolder(folderId)
+    const allSessions = await this.uploadPoolService.getAllUploads();
     return allSessions
   }
 
   @Post('initiate')
-  async initiateUpload(@Body() dto: InitiateUploadDto) {
+  @UseGuards(JwtAuthGuard)
+  async initiateUpload(@Body() dto: InitiateUploadDto, @Request() req) {
     const chunkSize = 5 * 1024 * 1024; // 5mb
     const totalChunks = Math.ceil(dto.fileSize / chunkSize);
-    const uploadId = await this.uploadPoolService.initiateUpload(dto.fileName, dto.fileSize, totalChunks, dto?.parent, dto?.children, dto?.fileHash, dto?.resourceType);
+
+    const createdBy = req.user?._id?.toString();
+
+    const uploadId = await this.uploadPoolService.initiateUpload(dto.fileName, dto.fileSize, totalChunks, dto?.parent, dto?.children, dto?.fileHash, dto?.resourceType, createdBy);
     return { uploadId, totalChunks };
   }
 
 
   @Post('folder')
-  async createFolder(@Body() dto: CreateFolderDto) {
-    const {_id} = await this.uploadPoolService.createNewFolder(dto.folderName, dto.parent);
-    return { uploadId:_id };
+  @UseGuards(JwtAuthGuard)
+  async createFolder(@Body() dto: CreateFolderDto, @Request() req) {
+    const createdBy = req.user?._id?.toString();
+    const { _id } = await this.uploadPoolService.createNewFolder(dto.folderName, dto.parent, undefined, createdBy);
+    return { uploadId: _id };
   }
 
   @Post('create-file')
-  async createFile(@Body() dto: CreateFileDto) {
-    const uploadId = await this.uploadPoolService.createEmptyFile(dto.fileName, dto.parent);
+  @UseGuards(JwtAuthGuard)
+  async createFile(@Body() dto: CreateFileDto, @Request() req) {
+    const createdBy = req.user?._id?.toString();
+    const uploadId = await this.uploadPoolService.createEmptyFile(dto.fileName, dto.parent, createdBy);
     return { uploadId };
   }
 
   @Post('chunk')
   @UseInterceptors(FileInterceptor('chunk'))
-
+  @UseGuards(JwtAuthGuard)
   async uploadChunk(@UploadedFile(
     new FileSizeValidationPipe(5 * 1024 * 1024)
   ) file: Express.Multer.File, @Body() dto: UploadChunkDto) {
@@ -74,16 +87,19 @@ export class UploadController {
   }
 
   @Put('pause/:uploadId')
-  async pauseCurrentChunkUpload(@Param('uploadId') uploadId: string,@Query("chunkIndex") chunkIndex: number) {
+  @UseGuards(JwtAuthGuard)
+  async pauseCurrentChunkUpload(@Param('uploadId') uploadId: string, @Query("chunkIndex") chunkIndex: number) {
     return await this.uploadPoolService.pauseCurrentChunkUpload(uploadId, chunkIndex);
   }
 
   @Get('status/:uploadId')
+  @UseGuards(JwtAuthGuard)
   async getUploadStatus(@Param('uploadId') uploadId: string) {
     return await this.uploadPoolService.getUploadStatus(uploadId);
   }
 
   @Post('complete')
+  @UseGuards(JwtAuthGuard)
   async completeUpload(@Body() dto: CompleteUploadDto) {
     const filePath = await this.uploadPoolService.completeUpload(dto.uploadId);
     return {
@@ -93,10 +109,11 @@ export class UploadController {
     };
   }
 
-    @Delete("all")
-  async deleteAllUploadedFiles(@Body() dto: {uploadIds:string[]}) {
-    if(!dto?.uploadIds) throw new BadRequestException('No upload ids provided');
-    if(dto?.uploadIds.length === 0) throw new BadRequestException('No upload ids provided');
+  @Delete("all")
+  @UseGuards(JwtAuthGuard)
+  async deleteAllUploadedFiles(@Body() dto: { uploadIds: string[] }) {
+    if (!dto?.uploadIds) throw new BadRequestException('No upload ids provided');
+    if (dto?.uploadIds.length === 0) throw new BadRequestException('No upload ids provided');
     await this.uploadPoolService.deleteAllUploadedFiles(dto.uploadIds);
     return {
       success: true,
@@ -105,6 +122,7 @@ export class UploadController {
   }
 
   @Delete(':uploadId')
+  @UseGuards(JwtAuthGuard)
   async cancelUpload(@Param('uploadId') uploadId: string) {
     await this.uploadPoolService.cancelUpload(uploadId);
     return {
@@ -113,7 +131,21 @@ export class UploadController {
     };
   }
 
+  @Post(':uploadId/activity')
+  @UseGuards(JwtAuthGuard)
+  async updateActivity(@Param('uploadId') uploadId: string, @Request() req) {
+    const userId = req.user?._id?.toString();
+    return await this.uploadPoolService.updateActivity(uploadId, userId);
+  }
 
-
+  @Get('thumbnails/:uploadId')
+  async getThumbnail(@Param('uploadId') uploadId: string, @Res() res: Response) {
+    const filePath = join(process.cwd(), 'uploads', 'thumbnails', `${uploadId}.png`);
+    const fs = require('fs');
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).send('Not found');
+    }
+    res.sendFile(filePath);
+  }
 
 }

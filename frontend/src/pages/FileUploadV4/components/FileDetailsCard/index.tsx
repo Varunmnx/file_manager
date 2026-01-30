@@ -74,6 +74,7 @@ export default function FileDetailsCard() {
         {/* Content */}
         <div className="p-4 overflow-y-auto h-[calc(100%-140px)] ">
           {/* File Preview Icon */}
+          {/* File Preview Icon */}
           <div className="flex justify-center mb-6">
             <div className="bg-red-50 p-8 rounded-xl">
               {fileDetails?.isFolder ? (

@@ -1,11 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
+import { UsersService } from '../service/auth.service';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private usersService: UsersService,
+  ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -13,13 +17,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  validate(payload: { email: string; _id: string }) {
+  async validate(payload: { email: string; _id: string }) {
     // JWT module already validated the token signature and expiration
-    // We just need to return the user data from the payload
-    // console.log(payload);
-    return {
-      _id: payload._id,
-      email: payload.email,
-    };
+    const user = await this.usersService.findById(payload._id);
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+    return user;
   }
 }

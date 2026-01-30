@@ -10,7 +10,9 @@ export enum Slug {
   FILE_STATUS = "/upload/status",
   INITIATE_FILE_UPLOAD = "/upload/initiate",
   GET_ALL_FILES = "/upload/all",
-  CREATE_FOLDER = "/upload/folder", 
+  CREATE_FOLDER = "/upload/folder",
   CREATE_FILE = "/upload/create-file",
-  PAUSE_UPLOAD  = "/upload/pause"
+  PAUSE_UPLOAD = "/upload/pause",
+  UPDATE_ACTIVITY = "/upload",
+  THUMBNAILS = "/upload/thumbnails"
 }

@@ -15,6 +15,7 @@ import * as mammoth from 'mammoth';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 import { extractText } from 'unpdf';
 import * as XLSX from 'xlsx';
+import { FileRevisionDocument } from './entities/file-revision.entity';
 
 // Interface for the authenticated user in the request
 interface AuthenticatedRequest extends Request {
@@ -542,7 +543,7 @@ export class OnlyOfficeController {
     };
   }
 
-  private async handleAsyncAIAnalysis(revision: any, revisionPath: string, newBuffer: Buffer, ext: string, fileName: string) {
+  private async handleAsyncAIAnalysis(revision: FileRevisionDocument, revisionPath: string, newBuffer: Buffer, ext: string, fileName: string) {
     this.logger.log(`Starting background AI analysis for ${fileName}`);
     try {
       let aiChangeSummary = '';

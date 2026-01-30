@@ -1,21 +1,21 @@
 import { UploadedFile } from "@/types/file.types";
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { toast } from "sonner";
 import FileFolderTable from "./components/Table/FileFolderTable"; 
 import { Anchor, Breadcrumbs, Flex } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import ResourceUploadModal from "./components/Modal/ResourceUploadModal";
 import LiveFileUploadController from "./components/LiveFileUploadController";
 import { useChunkedUpload } from "./context/chunked-upload.context";
 import useDeleteAll from "./hooks/useDeleteAll";
-import CreateFolderModal from "./components/Modal/CreateFolderModal";
 import useCreateFolder from "./hooks/createFolder";
-import CreateFileModal from "./components/Modal/CreateFileModal";
 import useCreateFile from "./hooks/createFile";
+
+const ResourceUploadModal = lazy(() => import("./components/Modal/ResourceUploadModal"));
+const CreateFolderModal = lazy(() => import("./components/Modal/CreateFolderModal"));
+const CreateFileModal = lazy(() => import("./components/Modal/CreateFileModal"));
 import { useNavigate, useParams } from "react-router-dom";
 import { useDragAndDrop } from "./hooks/useDragDrop";
-import useFileGetStatus from "./hooks/useFileGetStatus";
-import FileDetailsCard from "./components/FileDetailsCard"; 
+import useFileGetStatus from "./hooks/useFileGetStatus"; 
 import Profile from "./components/Profile";
 
 
@@ -28,8 +28,7 @@ const Page = () => {
     uploadQueue,
     allFilesAndFolders: data,
     refetchFilesAndFolders: refetch,
-    isLoading,
-    fileDetails,
+    isLoading, 
   } = useChunkedUpload();
   const getUploadStatusMutation = useFileGetStatus();
   
@@ -185,28 +184,30 @@ const Page = () => {
 
   return (
     <div className="w-screen h-screen flex justify-center relative overflow-x-hidden overflow-y-scroll">
-      {fileDetails && <FileDetailsCard />}
-      {opened && (
-          <ResourceUploadModal
-            opened={opened}
-            close={handleModalClose}
-            initialFiles={droppedFiles}
+
+      <Suspense fallback={null}>
+        {opened && (
+            <ResourceUploadModal
+              opened={opened}
+              close={handleModalClose}
+              initialFiles={droppedFiles}
+            />
+          )}
+        {isCreateNewFolderOpened && (
+          <CreateFolderModal
+            onSubmit={handleCreateNewFolder}
+            opened={isCreateNewFolderOpened}
+            close={closeCreateNewFolder}
           />
         )}
-      {isCreateNewFolderOpened && (
-        <CreateFolderModal
-          onSubmit={handleCreateNewFolder}
-          opened={isCreateNewFolderOpened}
-          close={closeCreateNewFolder}
-        />
-      )}
-      {isCreateNewFileOpened && (
-        <CreateFileModal
-          onSubmit={handleCreateNewFile}
-          opened={isCreateNewFileOpened}
-          close={closeCreateNewFile}
-        />
-      )}
+        {isCreateNewFileOpened && (
+          <CreateFileModal
+            onSubmit={handleCreateNewFile}
+            opened={isCreateNewFileOpened}
+            close={closeCreateNewFile}
+          />
+        )}
+      </Suspense>
       {
         uploadQueue?.filter((file) => {
           return (
@@ -216,7 +217,7 @@ const Page = () => {
             file.status == "idle"
           );
         })?.length > 0 &&<LiveFileUploadController />}
-      <div className="w-3/4 py-8">
+      <div className="w-full max-w-7xl px-4 md:px-8 py-8">
         <Flex justify={"right"} align={"center"}>
           <Profile  deleteAllUploads={deleteAllUploads}
             onResourceUpload={open}
