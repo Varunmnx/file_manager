@@ -7,6 +7,7 @@ import { UploadDocument, UploadEntity } from '../entities/upload-status.entity';
 import { toObjectId } from 'src/common/utils';
 import { Types } from 'mongoose';
 import { FileRevisionRepository } from '../../onlyoffice/repositories/file-revision.repository';
+import { ActivityRepository } from '../repositories/activity.repository';
 
 
 export interface UploadSession {
@@ -30,6 +31,7 @@ export class UploadPoolService {
     constructor(
         private readonly fileFolderRepository: FileFolderRepository,
         private readonly fileRevisionRepository: FileRevisionRepository,
+        private readonly activityRepository: ActivityRepository,
     ) { }
 
     async initiateUpload(
@@ -445,5 +447,116 @@ export class UploadPoolService {
         return { success: true };
     }
 
+    async getHistory(uploadId: string) {
+        return await this.activityRepository.findRelatedActivities(uploadId);
+    }
 
+    async moveItem(id: string, newParentId: string | null, userId?: string) {
+        const item = await this.fileFolderRepository.findById(id);
+        if (!item) {
+            throw new NotFoundException('Item not found');
+        }
+
+        const oldParents = item.parents || [];
+        let newParents: Types.ObjectId[] = [];
+        let destName = 'Home';
+        let destId: Types.ObjectId | undefined = undefined;
+
+        // Get old parent name for logging
+        let oldParentName = 'Home';
+        let oldParentId: Types.ObjectId | undefined = undefined;
+        if (oldParents.length > 0) {
+            const lastParentId = oldParents[oldParents.length - 1];
+            const oldParent = await this.fileFolderRepository.findById(lastParentId);
+            if (oldParent) {
+                oldParentName = oldParent.fileName;
+                oldParentId = oldParent._id;
+            }
+        }
+
+        if (newParentId) {
+            const destFolder = await this.fileFolderRepository.findById(newParentId);
+            if (!destFolder) {
+                throw new NotFoundException('Destination folder not found');
+            }
+            if (!destFolder.isFolder) {
+                throw new BadRequestException('Destination must be a folder');
+            }
+            destName = destFolder.fileName;
+            destId = destFolder._id;
+
+            // Check if moving folder into itself or its descendants
+            if (item.isFolder) {
+                if (destFolder._id.toString() === item._id.toString() ||
+                    destFolder.parents.some(p => p.toString() === item._id.toString())) {
+                    throw new BadRequestException('Cannot move a folder into itself or its descendants');
+                }
+            }
+
+            newParents = [...destFolder.parents, destFolder._id];
+        }
+
+        // Check for duplicate name in destination
+        await this.fileFolderRepository.checkDuplicate(item.fileName, newParents);
+
+        const totalSizeMoved = item.fileSize;
+
+        // 1. Update the item itself
+        const itemBuilder = item.toBuilder();
+        itemBuilder.setParents(newParents);
+
+        // Log activity in separate collection
+        await this.activityRepository.create({
+            action: 'MOVE',
+            details: `Moved from ${oldParentName} to ${destName}`,
+            itemId: item._id,
+            itemName: item.fileName,
+            isFolder: item.isFolder,
+            fromId: oldParentId,
+            fromName: oldParentName,
+            toId: destId,
+            toName: destName,
+            timestamp: new Date(),
+            userId: userId ? toObjectId(userId) : undefined
+        });
+
+        await this.fileFolderRepository.update(item._id, itemBuilder.build());
+
+        // 2. If it's a folder, update all descendants' lineage
+        if (item.isFolder) {
+            const descendants = await this.fileFolderRepository.findDescendants(item._id);
+            for (const descendant of descendants) {
+                // descendant.parents was [...oldParents, item._id, ...relative]
+                // new parents should be [...newParents, item._id, ...relative]
+                const relativePath = descendant.parents.slice(oldParents.length + 1);
+                const updatedDescendantParents = [...newParents, item._id, ...relativePath];
+
+                const descBuilder = descendant.toBuilder();
+                descBuilder.setParents(updatedDescendantParents);
+                await this.fileFolderRepository.update(descendant._id, descBuilder.build());
+            }
+        }
+
+        // 3. Update old ancestors' sizes
+        for (const ancestorId of oldParents) {
+            const ancestor = await this.fileFolderRepository.findById(ancestorId);
+            if (ancestor) {
+                const builder = ancestor.toBuilder();
+                builder.setFileSize(Math.max(0, ancestor.fileSize - totalSizeMoved));
+                await this.fileFolderRepository.update(ancestor._id, builder.build());
+            }
+        }
+
+        // 4. Update new ancestors' sizes
+        for (const ancestorId of newParents) {
+            const ancestor = await this.fileFolderRepository.findById(ancestorId);
+            if (ancestor) {
+                const builder = ancestor.toBuilder();
+                builder.setFileSize(ancestor.fileSize + totalSizeMoved);
+                await this.fileFolderRepository.update(ancestor._id, builder.build());
+            }
+        }
+
+        return { success: true };
+    }
 }

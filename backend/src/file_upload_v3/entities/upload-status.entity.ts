@@ -69,6 +69,30 @@ export class UploadEntity {
   @Prop({ type: 'number', name: 'version', default: 1 })
   public version = 1;
 
+  @Prop({
+    type: [{
+      action: String,
+      details: String,
+      fromId: { type: SchemaTypes.ObjectId, ref: 'User', required: false },
+      fromName: String,
+      toId: { type: SchemaTypes.ObjectId, ref: 'User', required: false },
+      toName: String,
+      timestamp: { type: Date, default: () => new Date() },
+      userId: { type: SchemaTypes.ObjectId, ref: 'User', required: false }
+    }],
+    default: []
+  })
+  public activities: Array<{
+    action: string;
+    details: string;
+    fromId?: Types.ObjectId;
+    fromName?: string;
+    toId?: Types.ObjectId;
+    toName?: string;
+    timestamp: Date;
+    userId?: Types.ObjectId
+  }>;
+
   public static builder() {
     return new UploadEntity.Builder();
   }
@@ -93,6 +117,7 @@ export class UploadEntity {
     builder.lastViewedBy = this.lastViewedBy;
     builder.lastViewedAt = this.lastViewedAt;
     builder.thumbnail = this.thumbnail;
+    builder.activities = this.activities;
 
     return builder;
   }
@@ -115,6 +140,16 @@ export class UploadEntity {
     lastViewedBy: User | Types.ObjectId;
     lastViewedAt: Date;
     thumbnail: string;
+    activities: Array<{
+      action: string;
+      details: string;
+      fromId?: Types.ObjectId;
+      fromName?: string;
+      toId?: Types.ObjectId;
+      toName?: string;
+      timestamp: Date;
+      userId?: Types.ObjectId
+    }>;
 
     public setFileName(value: string) {
       this.fileName = value;
@@ -163,6 +198,20 @@ export class UploadEntity {
 
     public setThumbnail(value: string) {
       this.thumbnail = value;
+      return this;
+    }
+
+    public setActivities(value: Array<{
+      action: string;
+      details: string;
+      fromId?: Types.ObjectId;
+      fromName?: string;
+      toId?: Types.ObjectId;
+      toName?: string;
+      timestamp: Date;
+      userId?: Types.ObjectId
+    }>) {
+      this.activities = value;
       return this;
     }
 
@@ -222,6 +271,7 @@ export class UploadEntity {
       e.lastViewedBy = this.lastViewedBy;
       e.lastViewedAt = this.lastViewedAt;
       e.thumbnail = this.thumbnail;
+      e.activities = this.activities;
 
       return e;
     }

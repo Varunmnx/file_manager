@@ -9,20 +9,23 @@ import { useChunkedUpload } from "./context/chunked-upload.context";
 import useDeleteAll from "./hooks/useDeleteAll";
 import useCreateFolder from "./hooks/createFolder";
 import useCreateFile from "./hooks/createFile";
+import { useNavigate, useParams } from "react-router-dom";
+import { useDragAndDrop } from "./hooks/useDragDrop";
+import useFileGetStatus from "./hooks/useFileGetStatus"; 
+import useMoveItem from "./hooks/useMoveItem";
+import Profile from "./components/Profile";
+import MoveItemModal from "./components/Modal/MoveItemModal";
 
 const ResourceUploadModal = lazy(() => import("./components/Modal/ResourceUploadModal"));
 const CreateFolderModal = lazy(() => import("./components/Modal/CreateFolderModal"));
 const CreateFileModal = lazy(() => import("./components/Modal/CreateFileModal"));
-import { useNavigate, useParams } from "react-router-dom";
-import { useDragAndDrop } from "./hooks/useDragDrop";
-import useFileGetStatus from "./hooks/useFileGetStatus"; 
-import Profile from "./components/Profile";
 
 
 const Page = () => {
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const { folderId } = useParams();
+  const moveItemMutation = useMoveItem();
 
   const {
     uploadQueue,
@@ -49,7 +52,8 @@ const Page = () => {
 
   const { isDragging } = useDragAndDrop({
     onFilesDropped: (files) =>{
-      console.log(files)
+      setDroppedFiles(files);
+      open();
     }
   });
 
@@ -80,7 +84,6 @@ const Page = () => {
   };
 
   const deleteAllUploads = () => {
-    console.log(selectedFiles);
     deleteAllMutation
       .mutateAsync({ uploadIds: Array.from(selectedFiles) })
       .then(() => refetch());
@@ -88,7 +91,6 @@ const Page = () => {
 
   const handleCreateNewFolder = (folderName: string, parentId?: string) => {
     if (!folderName) return;
-    console.log(folderName);
     createFolderMutation.mutate(
       {
         folderName,
@@ -153,7 +155,6 @@ const Page = () => {
   const navigate = useNavigate();
 
   const handleFileFolderClick = (entityId: string, isDirectory: boolean) => {
-    console.log(entityId);
     if (isDirectory && entityId) {
       navigate(`/folder/${entityId}`, { replace: true });
     }
@@ -164,27 +165,49 @@ const Page = () => {
       refetch();
     }
   }, [refetch, uploadQueue]);
+
   const allSelected =
     (data?.length ?? 0) > 0 && selectedFiles.size === data?.length;
   const indeterminate =
     selectedFiles.size > 0 && selectedFiles.size < (data?.length || 0);
 
-
-    function getParents(){
-      if(getUploadStatusMutation.data?.parents && getUploadStatusMutation.data.parents.length > 0){
-        return getUploadStatusMutation.data?.parents
-      }
-      return []
+  function getParents(){
+    if(getUploadStatusMutation.data?.parents && getUploadStatusMutation.data.parents.length > 0){
+      return getUploadStatusMutation.data?.parents
     }
+    return []
+  }
+
+  const handleMoveDroppedItems = (draggedIds: string[], targetFolderId: string | null) => {
+    const movePromises = draggedIds.map(id => 
+      moveItemMutation.mutateAsync({ uploadId: id, newParentId: targetFolderId })
+    );
+
+    toast.promise(Promise.all(movePromises), {
+      loading: `Moving ${draggedIds.length} items...`,
+      success: () => {
+        refetch();
+        return "Moved successfully";
+      },
+      error: (err) => err?.response?.data?.message || "Failed to move items"
+    });
+  };
+
+  const [itemsToMoveInModal, setItemsToMoveInModal] = useState<UploadedFile[]>([]);
+
+  const handleMoveSelected = () => {
+    const selectedItems = data?.filter(item => selectedFiles.has(item._id as string)) || [];
+    if (selectedItems.length > 0) {
+      setItemsToMoveInModal(selectedItems);
+    }
+  };
 
   if (isLoading || deleteAllMutation.isPending) {
     return (<div>{"Loading..."}</div>)
   }
 
-
   return (
     <div className="w-screen h-screen flex justify-center relative overflow-x-hidden overflow-y-scroll">
-
       <Suspense fallback={null}>
         {opened && (
             <ResourceUploadModal
@@ -208,6 +231,18 @@ const Page = () => {
           />
         )}
       </Suspense>
+      {itemsToMoveInModal.length > 0 && (
+        <MoveItemModal
+          opened={itemsToMoveInModal.length > 0}
+          onClose={() => setItemsToMoveInModal([])}
+          itemsToMove={itemsToMoveInModal}
+          onSuccess={() => {
+            refetch();
+            setSelectedFiles(new Set());
+            setItemsToMoveInModal([]);
+          }}
+        />
+      )}
       {
         uploadQueue?.filter((file) => {
           return (
@@ -216,31 +251,53 @@ const Page = () => {
             file.status == "initiating" ||
             file.status == "idle"
           );
-        })?.length > 0 &&<LiveFileUploadController />}
+        })?.length > 0 && <LiveFileUploadController />}
       <div className="w-full max-w-7xl px-4 md:px-8 py-8">
         <Flex justify={"right"} align={"center"}>
-          <Profile  deleteAllUploads={deleteAllUploads}
+          <Profile
+            deleteAllUploads={deleteAllUploads}
             onResourceUpload={open}
-            openCreateNewFolder={openCreateNewFolder} 
+            openCreateNewFolder={openCreateNewFolder}
             openCreateNewFile={openCreateNewFile}
+            moveSelectedUploads={handleMoveSelected}
+            hasSelectedItems={selectedFiles.size > 0}
           />
         </Flex>
         {
-          // eslint-disable-next-line no-constant-binary-expression, no-unsafe-optional-chaining
           folderId ? (
             <FileFolderLocation
+              onDrop={handleMoveDroppedItems}
               folderIds={
-                folderId
-                  ? // eslint-disable-next-line no-constant-binary-expression
-                    ([ 
-                      ...getParents(),
-                      folderId,
-                    ] )
-                  : []
+                [ 
+                  ...getParents(),
+                  folderId,
+                ]
               }
             />
           ) : (
-            <h1>F Manager</h1>
+            <h1 
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.currentTarget.style.color = "var(--mantine-color-blue-6)";
+              }}
+              onDragLeave={(e) => {
+                e.currentTarget.style.color = "inherit";
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.currentTarget.style.color = "inherit";
+                try {
+                  const dataTransfer = JSON.parse(e.dataTransfer.getData("application/json"));
+                  const draggedIds = dataTransfer.ids || [];
+                  if (draggedIds.length > 0) {
+                    handleMoveDroppedItems(draggedIds, null);
+                  }
+                } catch(err) { console.error(err); }
+              }}
+              className="transition-colors cursor-default"
+            >
+              F Manager
+            </h1>
           )
         }
         <div className="mt-10" />
@@ -259,13 +316,58 @@ const Page = () => {
   );
 };
 
-const FileFolderLocation = ({ folderIds }: { folderIds: string[] }) => {
+interface FileFolderLocationProps {
+    folderIds: string[];
+    onDrop: (draggedIds: string[], targetFolderId: string | null) => void;
+}
+
+const FileFolderLocation = ({ folderIds, onDrop }: FileFolderLocationProps) => {
   const navigate = useNavigate()
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  
+  const handleDrop = (e: React.DragEvent, targetId: string | null) => {
+    e.preventDefault();
+    setDragOverId(null);
+    try {
+      const data = JSON.parse(e.dataTransfer.getData("application/json"));
+      if (data.ids && onDrop) {
+        onDrop(data.ids, targetId);
+      }
+    } catch(err) { console.error(err); }
+  };
+
   return (
     <Breadcrumbs>
-      <Anchor href="/">Home</Anchor>
+      <Anchor 
+        onClick={() => navigate("/")}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOverId("home");
+        }}
+        onDragLeave={() => setDragOverId(null)}
+        onDrop={(e) => handleDrop(e, null)}
+        className="cursor-pointer transition-colors"
+        c={dragOverId === "home" ? "blue" : "dimmed"}
+        fw={dragOverId === "home" ? 700 : 400}
+      >
+        Home
+      </Anchor>
       {folderIds.map((folderId: string) => (
-        <Anchor key={folderId} onClick={()=>navigate(`/folder/${folderId}`)}>{folderId}</Anchor>
+        <Anchor 
+          key={folderId} 
+          onClick={()=>navigate(`/folder/${folderId}`)}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOverId(folderId);
+          }}
+          onDragLeave={() => setDragOverId(null)}
+          onDrop={(e) => handleDrop(e, folderId)}
+          className="cursor-pointer transition-colors"
+          c={dragOverId === folderId ? "blue" : "dimmed"}
+          fw={dragOverId === folderId ? 700 : 400}
+        >
+          {folderId}
+        </Anchor>
       ))}
     </Breadcrumbs>
   );

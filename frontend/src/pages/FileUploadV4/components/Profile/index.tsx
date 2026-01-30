@@ -8,6 +8,7 @@ import {
   IconUpload,
   IconUser,
   IconFilePlus,
+  IconArrowsMove,
 } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 
@@ -16,6 +17,8 @@ interface Props {
   onResourceUpload: () => void;
   openCreateNewFolder: () => void;
   openCreateNewFile: () => void;
+  moveSelectedUploads: () => void;
+  hasSelectedItems: boolean;
 }
 
 const Profile = ({
@@ -23,6 +26,8 @@ const Profile = ({
   onResourceUpload,
   openCreateNewFolder,
   openCreateNewFile,
+  moveSelectedUploads,
+  hasSelectedItems,
 }: Props) => {
   const profile = useAppSelector((state) => state.profileSlice.profile);
   const navigate = useNavigate();
@@ -89,12 +94,24 @@ const Profile = ({
         >
           Upload
         </Menu.Item>
-        <Menu.Item
-          onClick={deleteAllUploads}
-          leftSection={<IconTrash size={14} />}
-        >
-          Delete All
-        </Menu.Item>
+        {hasSelectedItems && (
+          <>
+            <Menu.Item
+              onClick={deleteAllUploads}
+              leftSection={<IconTrash size={14} />}
+              color="red"
+            >
+              Delete Selected
+            </Menu.Item>
+            <Menu.Item
+              onClick={moveSelectedUploads}
+              leftSection={<IconArrowsMove size={14} />}
+              color="blue"
+            >
+              Move Selected
+            </Menu.Item>
+          </>
+        )}
         <Menu.Item
           onClick={openCreateNewFolder}
           leftSection={<IconFolder size={14} />}

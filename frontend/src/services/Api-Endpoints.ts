@@ -14,5 +14,7 @@ export enum Slug {
   CREATE_FILE = "/upload/create-file",
   PAUSE_UPLOAD = "/upload/pause",
   UPDATE_ACTIVITY = "/upload",
-  THUMBNAILS = "/upload/thumbnails"
+  THUMBNAILS = "/upload/thumbnails",
+  MOVE_ITEM = "/upload/move",
+  HISTORY = "/upload"
 }

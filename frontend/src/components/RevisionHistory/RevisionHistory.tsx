@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { StorageKeys, loadString } from '@/utils/storage';
-
+import { IconFolder } from '@tabler/icons-react';
+import Icon from '@/components/Icon';
+import { checkAndRetrieveExtension } from '../../pages/FileUploadV4/utils/getFileIcon';
+import { FileTypeIconMapKeys } from '@/utils/fileTypeIcons';
+import './index.css';
 interface Revision {
   id: string;
   version: number;
@@ -21,6 +26,24 @@ interface RevisionHistoryData {
   fileName: string;
   currentVersion: number;
   revisions: Revision[];
+  activities?: Array<{
+    action: string;
+    details: string;
+    itemId?: string;
+    itemName?: string;
+    isFolder?: boolean;
+    fromId?: string;
+    fromName?: string;
+    toId?: string;
+    toName?: string;
+    timestamp: string;
+    userId?: {
+        firstName: string;
+        lastName: string;
+        picture?: string;
+    };
+  }>;
+  isFolder?: boolean;
 }
 
 interface RevisionHistoryProps {
@@ -59,7 +82,8 @@ export default function RevisionHistory({ fileId, isOpen, onClose, onViewRevisio
   const [expandedSummary, setExpandedSummary] = useState<string | null>(null);
   const [loadingSummary, setLoadingSummary] = useState<string | null>(null);
   const [mediaPreview, setMediaPreview] = useState<{ url: string; type: 'image' | 'video' | 'audio' } | null>(null);
-
+  const [activeTab, setActiveTab] = useState<'versions' | 'activities'>('versions');
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (isOpen && fileId) {
@@ -81,7 +105,19 @@ export default function RevisionHistory({ fileId, isOpen, onClose, onViewRevisio
         throw new Error('Failed to fetch versions');
       }
       const result = await response.json();
+      
+      // Also fetch activities from the new history endpoint
+      const historyResponse = await fetch(`http://localhost:3000/upload/${fileId}/history`, {
+        headers: getAuthHeaders(),
+      });
+      if (historyResponse.ok) {
+        result.activities = await historyResponse.json();
+      }
+
       setData(result);
+      if (result.isFolder || (result.revisions && result.revisions.length === 0)) {
+        setActiveTab('activities');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -194,7 +230,7 @@ export default function RevisionHistory({ fileId, isOpen, onClose, onViewRevisio
     <div className="revision-history-overlay">
       <div className="revision-history-modal">
         <div className="revision-history-header">
-          <h2>📜 Version History</h2>
+          <h2>{data?.isFolder ? '📜 Folder History' : '📜 File History'}</h2>
           <button onClick={onClose} className="close-btn">×</button>
         </div>
 
@@ -219,91 +255,198 @@ export default function RevisionHistory({ fileId, isOpen, onClose, onViewRevisio
               <span className="current-version">Current: v{data.currentVersion}</span>
             </div>
 
-            {data.revisions.length === 0 ? (
-              <div className="no-revisions">
-                <p>📝 No previous versions available yet.</p>
-                <p className="hint">Versions are created when you save changes in the editor.</p>
-              </div>
-            ) : (
-              <div className="revisions-list">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Version</th>
-                      <th>Saved By</th>
-                      <th>Date</th>
-                      <th>Size</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.revisions.map((revision) => (
-                      <tr key={revision.id}>
-                        <td>
-                          <span className="version-badge">v{revision.version}</span>
-                        </td>
-                        <td>
-                            <div className="user-info">
-                              <div className="user-details">
-                                  {revision.user?.picture ? (
-                                      <img src={revision.user.picture} alt="" className="user-avatar" />
-                                  ) : (
-                                      <div className="user-avatar-placeholder">
-                                          {(revision.user?.name || revision.savedBy).charAt(0).toUpperCase()}
-                                      </div>
-                                  )}
-                                  <span className="user-name">{revision.user?.name || revision.savedBy}</span>
-                              </div>
+            <div className="tab-buttons">
+               <button 
+                 className={`tab-btn ${activeTab === 'versions' ? 'active' : ''}`}
+                 onClick={() => setActiveTab('versions')}
+               >
+                 📂 Version History
+               </button>
+               <button 
+                 className={`tab-btn ${activeTab === 'activities' ? 'active' : ''}`}
+                 onClick={() => setActiveTab('activities')}
+               >
+                 🕒 Activity Log
+               </button>
+            </div>
 
-                              {revision.aiChangeSummary && (
-                                <div className="ai-insight" title="AI-generated change summary">
-                                  <span className="ai-icon">✨</span>
-                                  {revision.aiChangeSummary}
-                                </div>
-                              )}
-                              
-                              <button 
-                                className="view-summary-btn"
-                                onClick={() => handleToggleSummary(revision)}
-                                disabled={loadingSummary === revision.id}
-                              >
-                                {loadingSummary === revision.id ? 'Generating Summary...' : 
-                                 (expandedSummary === revision.id ? 'Hide File Summary' : 'Show File Summary')}
-                              </button>
-                              
-                              {expandedSummary === revision.id && revision.aiFileSummary && (
-                                <div className="file-summary-box">
-                                  <strong>📄 File Content Summary:</strong>
-                                  <p>{revision.aiFileSummary}</p>
-                                </div>
-                              )}
-                           </div>
-                         </td>
-                         <td>{formatDate(revision.createdAt)}</td>
-                         <td>{formatFileSize(revision.fileSize)}</td>
-                         <td className="actions">
-                           <button
-                             onClick={() => handleView(revision.version, revision.downloadUrl)}
-                             disabled={viewing === revision.version}
-                             className="action-btn view-btn"
-                             title="View this version"
-                           >
-                             {viewing === revision.version ? '...' : '👁️'}
-                           </button>
-                           <button
-                             onClick={() => handleDownload(revision.downloadUrl)}
-                             className="action-btn download-btn"
-                             title="Download this version"
-                           >
-                             ⬇️
-                           </button>
-                         </td>
+            {activeTab === 'versions' ? (
+               data.revisions.length === 0 ? (
+                 <div className="no-revisions">
+                   <p>📝 No previous versions available yet.</p>
+                   <p className="hint">Versions are created when you save changes in the editor.</p>
+                 </div>
+               ) : (
+                 <div className="revisions-list">
+                   <table>
+                     <thead>
+                       <tr>
+                         <th>Version</th>
+                         <th>Saved By</th>
+                         <th>Date</th>
+                         <th>Size</th>
+                         <th>Actions</th>
                        </tr>
-                     ))}
-                   </tbody>
-                 </table>
-               </div>
-             )}
+                     </thead>
+                     <tbody>
+                       {data.revisions.map((revision) => (
+                         <tr key={revision.id}>
+                           <td>
+                             <span className="version-badge">v{revision.version}</span>
+                           </td>
+                           <td>
+                               <div className="user-info">
+                                 <div className="user-details">
+                                     {revision.user?.picture ? (
+                                         <img src={revision.user.picture} alt="" className="user-avatar" />
+                                     ) : (
+                                         <div className="user-avatar-placeholder">
+                                             {(revision.user?.name || revision.savedBy).charAt(0).toUpperCase()}
+                                         </div>
+                                     )}
+                                     <span className="user-name">{revision.user?.name || revision.savedBy}</span>
+                                 </div>
+   
+                                 {revision.aiChangeSummary && (
+                                   <div className="ai-insight" title="AI-generated change summary">
+                                     <span className="ai-icon">✨</span>
+                                     {revision.aiChangeSummary}
+                                   </div>
+                                 )}
+                                 
+                                 <button 
+                                   className="view-summary-btn"
+                                   onClick={() => handleToggleSummary(revision)}
+                                   disabled={loadingSummary === revision.id}
+                                 >
+                                   {loadingSummary === revision.id ? 'Generating Summary...' : 
+                                    (expandedSummary === revision.id ? 'Hide File Summary' : 'Show File Summary')}
+                                 </button>
+                                 
+                                 {expandedSummary === revision.id && revision.aiFileSummary && (
+                                   <div className="file-summary-box">
+                                     <strong>📄 File Content Summary:</strong>
+                                     <p>{revision.aiFileSummary}</p>
+                                   </div>
+                                 )}
+                              </div>
+                            </td>
+                            <td>{formatDate(revision.createdAt)}</td>
+                            <td>{formatFileSize(revision.fileSize)}</td>
+                            <td className="actions">
+                              <button
+                                onClick={() => handleView(revision.version, revision.downloadUrl)}
+                                disabled={viewing === revision.version}
+                                className="action-btn view-btn"
+                                title="View this version"
+                              >
+                                {viewing === revision.version ? '...' : '👁️'}
+                              </button>
+                              <button
+                                onClick={() => handleDownload(revision.downloadUrl)}
+                                className="action-btn download-btn"
+                                title="Download this version"
+                              >
+                                ⬇️
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+               )
+            ) : (
+              <div className="activity-timeline">
+                {data.activities && data.activities.length > 0 ? (
+                  [...data.activities].reverse().map((activity, idx) => (
+                    <div key={idx} className="timeline-item">
+                      <div className="timeline-marker"></div>
+                      <div className="timeline-content">
+                        {/* User identity for the action */}
+                        {activity.userId && (
+                          <div className="activity-user">
+                             {activity.userId.picture ? (
+                               <img src={activity.userId.picture} alt="" className="user-avatar" />
+                             ) : (
+                               <div className="user-avatar-placeholder">
+                                 {activity.userId.firstName?.charAt(0)}
+                               </div>
+                             )}
+                             <span className="user-name">{activity.userId.firstName} {activity.userId.lastName}</span>
+                          </div>
+                        )}
+
+                        <div className="timeline-header">
+                          <span className="activity-action">
+                            {activity.action} {activity.itemId?.toString() !== data.fileId?.toString() ? "INTO THIS FOLDER" : ""}
+                          </span>
+                          <span className="activity-time">{formatDate(activity.timestamp)}</span>
+                        </div>
+                        {activity.action === 'MOVE' ? (
+                           <div className="move-details">
+                             {activity.itemId?.toString() !== data.fileId?.toString() && (
+                               <div className="item-identification">
+                                 {activity.isFolder ? (
+                                   <IconFolder size={18} style={{ color: '#4f46e5' }} />
+                                 ) : (
+                                   <Icon 
+                                     iconSize={20} 
+                                     scaleFactor="_1.5x"
+                                     extension={checkAndRetrieveExtension(activity.itemName || '') as FileTypeIconMapKeys} 
+                                   />
+                                 )}
+                                 <strong>{activity.itemName}</strong>
+                               </div>
+                             )}
+                             <div className="move-path">
+                               <span className="path-label">From:</span>
+                               <button 
+                                 className="path-link"
+                                 onClick={() => {
+                                   if (activity.fromId) {
+                                     onClose();
+                                     navigate(`/folder/${activity.fromId}`);
+                                   } else if (activity.fromName === 'Home') {
+                                     onClose();
+                                     navigate(`/`);
+                                   }
+                                 }}
+                               >
+                                 {activity.fromName}
+                               </button>
+                             </div>
+                             <div className="move-path">
+                               <span className="path-label">To:</span>
+                               <button 
+                                 className="path-link highlight"
+                                 onClick={() => {
+                                   if (activity.toId) {
+                                     onClose();
+                                     navigate(`/folder/${activity.toId}`);
+                                   } else if (activity.toName === 'Home') {
+                                     onClose();
+                                     navigate(`/`);
+                                   }
+                                 }}
+                               >
+                                 {activity.toName}
+                               </button>
+                             </div>
+                           </div>
+                        ) : (
+                          <p className="activity-details">{activity.details}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-activities">
+                    <p>No activity recorded for this file yet.</p>
+                  </div>
+                )}
+              </div>
+            )}
            </div>
          )}
          
@@ -660,6 +803,176 @@ export default function RevisionHistory({ fileId, isOpen, onClose, onViewRevisio
           color: white;
           font-size: 2rem;
           cursor: pointer;
+        }
+
+        /* Tabs */
+        .tab-buttons {
+          display: flex;
+          gap: 12px;
+          margin-bottom: 24px;
+          border-bottom: 1px solid #eee;
+          padding-bottom: 12px;
+        }
+
+        .tab-btn {
+          padding: 8px 16px;
+          border: none;
+          background: #f1f5f9;
+          color: #64748b;
+          border-radius: 8px;
+          font-size: 0.9rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .tab-btn:hover {
+          background: #e2e8f0;
+        }
+
+        .tab-btn.active {
+          background: #667eea;
+          color: white;
+          box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        /* Activity Timeline */
+        .activity-timeline {
+          padding: 10px 0;
+        }
+
+        .timeline-item {
+          position: relative;
+          padding-left: 24px;
+          padding-bottom: 24px;
+          border-left: 2px solid #eef2ff;
+        }
+
+        .timeline-item:last-child {
+          border-left-color: transparent;
+        }
+
+        .timeline-marker {
+          position: absolute;
+          left: -7px;
+          top: 0;
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          background: #667eea;
+          border: 2px solid white;
+          box-shadow: 0 0 0 2px #eef2ff;
+        }
+
+        .timeline-content {
+          background: #f8fafc;
+          padding: 12px 16px;
+          border-radius: 10px;
+          border: 1px solid #e2e8f0;
+        }
+
+        .timeline-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 8px;
+        }
+
+        .activity-action {
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: #667eea;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .activity-time {
+          font-size: 0.75rem;
+          color: #94a3b8;
+        }
+
+        .activity-details {
+          margin: 0;
+          font-size: 0.9rem;
+          color: #334155;
+        }
+
+        .activity-user {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 8px;
+          padding-bottom: 8px;
+          border-bottom: 1px solid #f1f5f9;
+        }
+
+        .item-identification {
+          font-size: 0.85rem;
+          color: #1e293b;
+          margin-bottom: 10px;
+          background: #fff;
+          padding: 6px 10px;
+          border-radius: 6px;
+          border-left: 3px solid #667eea;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .move-details {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .move-path {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .path-label {
+          font-size: 0.8rem;
+          color: #64748b;
+          min-width: 40px;
+        }
+
+        .path-link {
+          font-size: 0.85rem;
+          font-weight: 600;
+          color: #334155;
+          padding: 2px 8px;
+          background: white;
+          border-radius: 4px;
+          border: 1px solid #e2e8f0;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .path-link:hover {
+          background: #f8fafc;
+          border-color: #cbd5e1;
+          color: #1e293b;
+        }
+
+        .path-link.highlight {
+          color: #667eea;
+          background: #eef2ff;
+          border-color: #c7d2fe;
+        }
+
+        .path-link.highlight:hover {
+          background: #e0e7ff;
+          border-color: #a5b4fc;
+        }
+
+        .no-activities {
+          text-align: center;
+          padding: 40px;
+          color: #94a3b8;
+          background: #f8fafc;
+          border-radius: 12px;
+          border: 2px dashed #e2e8f0;
         }
       `}</style>
     </div>

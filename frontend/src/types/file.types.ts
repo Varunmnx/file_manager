@@ -26,4 +26,17 @@ export interface UploadedFile {
   lastOpenedBy?: CreatorInfo | string;
   lastOpenedAt?: Date;
   thumbnail?: string;
+  activities?: Array<{
+    action: string;
+    details: string;
+    itemId?: string;
+    itemName?: string;
+    isFolder?: boolean;
+    fromId?: string;
+    fromName?: string;
+    toId?: string;
+    toName?: string;
+    timestamp: Date;
+    userId?: CreatorInfo;
+  }>;
 }

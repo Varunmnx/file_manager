@@ -7,7 +7,7 @@ interface UseDragAndDropOptions {
 }
 
 export const useDragAndDrop = ({ onFilesDropped, enabled = true }: UseDragAndDropOptions) => {
-  const [isDragging, setIsDragging] = useState(false); 
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     if (!enabled) return;
@@ -15,10 +15,10 @@ export const useDragAndDrop = ({ onFilesDropped, enabled = true }: UseDragAndDro
     const handleDragEnter = (e: DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      
-      // setDragCounter(prev => prev + 1);
-      
-      if (e.dataTransfer?.items && e.dataTransfer.items.length > 0) {
+
+      const isFileDrag = e.dataTransfer?.types?.includes('Files');
+
+      if (isFileDrag && e.dataTransfer?.items && e.dataTransfer.items.length > 0) {
         setIsDragging(true);
       }
     };
@@ -26,7 +26,7 @@ export const useDragAndDrop = ({ onFilesDropped, enabled = true }: UseDragAndDro
     const handleDragLeave = (e: DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      
+
       // setDragCounter(prev => {
       //   const newCount = prev - 1;
       //   if (newCount === 0) {
@@ -44,13 +44,15 @@ export const useDragAndDrop = ({ onFilesDropped, enabled = true }: UseDragAndDro
     const handleDrop = async (e: DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      
+
       setIsDragging(false);
-      // setDragCounter(0);
+
+      const isFileDrag = e.dataTransfer?.types?.includes('Files');
+      if (!isFileDrag) return;
 
       const files: File[] = [];
       const items = e.dataTransfer?.items;
-console.log(" items>>>>>>>>>>>>>>>>", e)
+      console.log(" items>>>>>>>>>>>>>>>>", e)
       if (items) {
         // Process DataTransferItemList
         for (let i = 0; i < items.length; i++) {
@@ -97,13 +99,13 @@ async function traverseFileTree(item: any, files: File[], path = ''): Promise<vo
           type: file.type,
           lastModified: file.lastModified,
         });
-        
+
         // Store the relative path as a property
         Object.defineProperty(newFile, 'webkitRelativePath', {
           value: path + file.name,
           writable: false,
         });
-        
+
         files.push(newFile);
         resolve();
       });

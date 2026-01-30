@@ -311,6 +311,8 @@ export class OnlyOfficeController {
         fileName: file.fileName.split('/').pop() || file.fileName,
         currentVersion: file.version || 1,
         revisions: revisionList,
+        activities: file.activities || [],
+        isFolder: file.isFolder || false,
       };
     } catch (error) {
       this.logger.error('[OnlyOffice] Error getting revisions:', error);

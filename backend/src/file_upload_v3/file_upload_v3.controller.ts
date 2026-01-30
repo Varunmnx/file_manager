@@ -138,6 +138,12 @@ export class UploadController {
     return await this.uploadPoolService.updateActivity(uploadId, userId);
   }
 
+  @Get(':uploadId/history')
+  @UseGuards(JwtAuthGuard)
+  async getHistory(@Param('uploadId') uploadId: string) {
+    return await this.uploadPoolService.getHistory(uploadId);
+  }
+
   @Get('thumbnails/:uploadId')
   async getThumbnail(@Param('uploadId') uploadId: string, @Res() res: Response) {
     const filePath = join(process.cwd(), 'uploads', 'thumbnails', `${uploadId}.png`);
@@ -146,6 +152,13 @@ export class UploadController {
       return res.status(404).send('Not found');
     }
     res.sendFile(filePath);
+  }
+
+  @Put('move/:uploadId')
+  @UseGuards(JwtAuthGuard)
+  async moveItem(@Param('uploadId') uploadId: string, @Body() dto: { newParentId: string | null }, @Request() req) {
+    const userId = req.user?._id?.toString();
+    return await this.uploadPoolService.moveItem(uploadId, dto.newParentId, userId);
   }
 
 }
