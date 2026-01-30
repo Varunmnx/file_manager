@@ -38,6 +38,11 @@ export class FileRevisionRepository {
       .exec();
   }
 
+  async findById(id: string | Types.ObjectId): Promise<FileRevisionDocument | null> {
+    const objectId = typeof id === 'string' ? new Types.ObjectId(id) : id;
+    return this.revisionModel.findById(objectId).exec();
+  }
+
   async getNextVersion(fileId: string | Types.ObjectId): Promise<number> {
     const latest = await this.findLatestRevision(fileId);
     return latest ? latest.version + 1 : 1;

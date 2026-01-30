@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { OnlyOfficeController } from './onlyoffice.controller';
 import { OnlyOfficeService } from './onlyoffice.service';
+import { GeminiService } from './gemini.service';
 import { UploadModule } from '../file_upload_v3/file_upload_v3.module';
 import { FileRevisionEntity, FileRevisionSchema } from './entities/file-revision.entity';
 import { FileRevisionRepository } from './repositories/file-revision.repository';
@@ -22,11 +23,12 @@ import { JwtModule } from '@nestjs/jwt';
   controllers: [OnlyOfficeController],
   providers: [
     OnlyOfficeService,
+    GeminiService,
     FileRevisionRepository,
     CallbackAuthGuard,
     DownloadAuthGuard,
   ],
-  exports: [FileRevisionRepository, OnlyOfficeService],
+  exports: [FileRevisionRepository, OnlyOfficeService, GeminiService],
 })
 export class OnlyOfficeModule {}
 

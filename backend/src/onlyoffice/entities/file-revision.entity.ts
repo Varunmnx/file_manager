@@ -53,6 +53,14 @@ export class FileRevisionEntity {
   // Optional: SHA256 hash of the document
   @Prop({ type: String })
   public documentHash: string;
+
+  // AI-generated summary of changes in this version
+  @Prop({ type: String })
+  public aiChangeSummary: string;
+
+  // AI-generated summary of the file content at this version
+  @Prop({ type: String })
+  public aiFileSummary: string;
 }
 
 export const FileRevisionSchema = SchemaFactory.createForClass(FileRevisionEntity);

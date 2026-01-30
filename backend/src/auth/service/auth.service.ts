@@ -31,6 +31,10 @@ export class UsersService {
     return result;
   }
 
+  async findById(id: string): Promise<UserDocument | null> {
+    return this.userRepository.findOne({ _id: id });
+  }
+
   async findByGoogleId(googleId: string): Promise<UserDocument | null> {
     return this.userRepository.findOne({ googleId });
   }
