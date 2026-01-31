@@ -3,3 +3,26 @@
 @theme {
   --color-primary: #ff0000;
 }
+
+[data-type="file-icon"] {
+    width: 32px;
+    height: 32px;
+}
+
+[data-type="delete-icon"] {
+    width: 24px;
+    height: 24px;
+}
+
+
+.file-icon-wrapper{
+    [data-type="file-icon"]{
+        width: 32px;
+        height: 32px;
+    }
+
+    [data-type="delete-icon"]{
+        width: 24px;
+        height: 24px;
+    }
+}

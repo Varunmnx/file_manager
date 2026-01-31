@@ -9,10 +9,12 @@ const scaleFactors = ["_1.5x","_2x","_3x","_4x"];
 interface Props {
     iconSize: 16 | 20 | 24 | 32 | 40 | 48 | 64 | 96,
     scaleFactor: "_1.5x" | "_2x" | "_3x" | "_4x",
-    extension:  FileTypeIconMapKeys
+    extension:  FileTypeIconMapKeys,
+    className?: string,
+    style?: React.CSSProperties
 }
 
-const Icon = ({iconSize,scaleFactor,extension}: Props) => {
+const Icon = ({iconSize, scaleFactor, extension, className, style}: Props) => {
     
   const imageUrl = useMemo(() => {
     if(!iconSize || !scaleFactor || !extension) return "";
@@ -30,7 +32,13 @@ const Icon = ({iconSize,scaleFactor,extension}: Props) => {
 
   },[iconSize,scaleFactor,extension])
   return (
-    <img data-type="file-icon" src={imageUrl} alt="icon" />
+    <img 
+      data-type="file-icon" 
+      src={imageUrl} 
+      alt="icon" 
+      className={className}
+      style={{ width: iconSize, height: iconSize, ...style }}
+    />
   )
 }
 

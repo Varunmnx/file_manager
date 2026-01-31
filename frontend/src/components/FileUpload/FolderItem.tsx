@@ -1,4 +1,4 @@
-import { Accordion, Group, Text, Button, Box, Flex } from "@mantine/core";
+import { Accordion, Text, Button } from "@mantine/core";
 import { IconFolder, IconFile, IconX } from "@tabler/icons-react";
 import { formatBytes } from "@/utils/formatBytes";
 import { FileItem, FolderItem } from "./types";
@@ -110,26 +110,20 @@ function NestedItem({
   if (!node.isFolder) {
     // Render file
     return (
-      <Group 
-        wrap="nowrap" 
-        p="xs" 
-        pl={`${depth * 24 + 12}px`}
-        align="center" 
-        gap="sm"
-        style={{
-          borderLeft: depth > 0 ? "1px solid #e9ecef" : "none",
-        }}
+      <div 
+        className={`flex flex-nowrap items-center gap-3 p-2.5 ${depth > 0 ? 'border-l border-[#e9ecef]' : ''}`}
+        style={{ paddingLeft: `${depth * 24 + 12}px` }}
       >
         <IconFile size={16} color="#868e96" />
-        <Box style={{ flex: 1, minWidth: 0 }}>
+        <div className="flex-1 min-w-0">
           <Text size="xs" fw={500} lineClamp={1}>
             {node.name}
           </Text>
           <Text size="xs" c="dimmed">
             {formatBytes(node.size)}
           </Text>
-        </Box>
-      </Group>
+        </div>
+      </div>
     );
   }
 
@@ -137,10 +131,11 @@ function NestedItem({
   const childNodes = Array.from(node.children.values());
 
   return (
-    <Box>
+    <div>
       <Accordion 
         variant="contained"
         chevronPosition="right"
+        className="border-none"
         styles={{
           item: {
             marginLeft: depth > 0 ? `${depth * 16}px` : 0,
@@ -156,17 +151,17 @@ function NestedItem({
       >
         <Accordion.Item value={node.fullPath}>
           <Accordion.Control>
-            <Flex gap="sm" align="center">
+            <div className="flex gap-2 items-center">
               <IconFolder size={18} color="#fab005" />
-              <Box style={{ flex: 1, minWidth: 0 }}>
+              <div className="flex-1 min-w-0">
                 <Text size="xs" fw={600} lineClamp={1}>
                   {node.name}
                 </Text>
                 <Text size="xs" c="dimmed">
                   {node.fileCount} {node.fileCount === 1 ? 'file' : 'files'} • {formatBytes(node.totalSize)}
                 </Text>
-              </Box>
-            </Flex>
+              </div>
+            </div>
           </Accordion.Control>
 
           <Accordion.Panel>
@@ -180,7 +175,7 @@ function NestedItem({
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>
-    </Box>
+    </div>
   );
 }
 
@@ -201,18 +196,18 @@ export function FolderItemComponent({ folder, onRemove }: FolderItemProps) {
             }
           }}
         >
-          <Flex gap="md" align="center" justify="space-between" w="100%">
-            <Flex gap="md" align="center" style={{ flex: 1, minWidth: 0 }}>
+          <div className="flex gap-4 items-center justify-between w-full">
+            <div className="flex gap-4 items-center flex-1 min-w-0">
               <IconFolder size={24} color="#fab005" />
-              <Box style={{ flex: 1, minWidth: 0 }}>
+              <div className="flex-1 min-w-0">
                 <Text size="sm" fw={600} lineClamp={1}>
                   {folder.name}
                 </Text>
                 <Text size="xs" c="dimmed">
                   {folder.fileCount} {folder.fileCount === 1 ? 'file' : 'files'} • {formatBytes(folder.totalSize)}
                 </Text>
-              </Box>
-            </Flex>
+              </div>
+            </div>
 
             <Button
               data-delete-button
@@ -226,7 +221,7 @@ export function FolderItemComponent({ folder, onRemove }: FolderItemProps) {
             >
               <IconX size={16} />
             </Button>
-          </Flex>
+          </div>
         </Accordion.Control>
 
         <Accordion.Panel p="xs">

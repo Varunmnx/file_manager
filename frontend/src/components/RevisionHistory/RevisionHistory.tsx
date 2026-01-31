@@ -5,7 +5,7 @@ import { IconFolder } from '@tabler/icons-react';
 import Icon from '@/components/Icon';
 import { checkAndRetrieveExtension } from '../../pages/FileUploadV4/utils/getFileIcon';
 import { FileTypeIconMapKeys } from '@/utils/fileTypeIcons';
-import './index.css';
+
 interface Revision {
   id: string;
   version: number;
@@ -227,43 +227,43 @@ export default function RevisionHistory({ fileId, isOpen, onClose, onViewRevisio
   if (!isOpen) return null;
 
   return (
-    <div className="revision-history-overlay">
-      <div className="revision-history-modal">
-        <div className="revision-history-header">
-          <h2>{data?.isFolder ? '📜 Folder History' : '📜 File History'}</h2>
-          <button onClick={onClose} className="close-btn">×</button>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] backdrop-blur sm:p-4">
+      <div className="bg-white rounded-xl w-[90%] max-w-[700px] max-h-[80vh] overflow-hidden shadow-2xl animate-slideUp flex flex-col">
+        <div className="flex justify-between items-center px-6 py-5 bg-gradient-to-br from-[#667eea] to-[#764ba2] text-white shrink-0">
+          <h2 className="m-0 text-xl font-semibold">{data?.isFolder ? '📜 Folder History' : '📜 File History'}</h2>
+          <button onClick={onClose} className="bg-white/20 border-none text-white text-2xl w-9 h-9 rounded-full cursor-pointer transition-colors hover:bg-white/30 flex items-center justify-center">×</button>
         </div>
 
         {loading && (
-          <div className="revision-history-loading">
-            <div className="spinner"></div>
+          <div className="p-10 text-center text-[#666] flex flex-col items-center justify-center h-full">
+            <div className="w-10 h-10 border-[3px] border-[#f3f3f3] border-t-[#667eea] rounded-full animate-spin mb-4"></div>
             <p>Loading versions...</p>
           </div>
         )}
 
         {error && (
-          <div className="revision-history-error">
+          <div className="p-10 text-center text-[#666]">
             <p>❌ {error}</p>
-            <button onClick={fetchRevisions}>Retry</button>
+            <button onClick={fetchRevisions} className="mt-3 py-2 px-5 bg-[#667eea] text-white border-none rounded-md cursor-pointer hover:bg-[#5667c7] transition-colors">Retry</button>
           </div>
         )}
 
         {data && !loading && !error && (
-          <div className="revision-history-content">
-            <div className="file-info">
+          <div className="p-6 overflow-y-auto flex-1">
+            <div className="flex justify-between items-center px-4 py-3 bg-[#f8f9fa] rounded-lg mb-5">
               <strong>{data.fileName}</strong>
-              <span className="current-version">Current: v{data.currentVersion}</span>
+              <span className="bg-[#667eea] text-white py-1 px-3 rounded-full text-sm">Current: v{data.currentVersion}</span>
             </div>
 
-            <div className="tab-buttons">
+            <div className="flex border-b border-[#eee] mb-5 gap-2">
                <button 
-                 className={`tab-btn ${activeTab === 'versions' ? 'active' : ''}`}
+                 className={`px-4 py-2 bg-transparent border-b-2 font-medium cursor-pointer transition-colors ${activeTab === 'versions' ? 'text-[#667eea] border-[#667eea]' : 'text-[#666] border-transparent hover:text-[#667eea]'}`}
                  onClick={() => setActiveTab('versions')}
                >
                  📂 Version History
                </button>
                <button 
-                 className={`tab-btn ${activeTab === 'activities' ? 'active' : ''}`}
+                 className={`px-4 py-2 bg-transparent border-b-2 font-medium cursor-pointer transition-colors ${activeTab === 'activities' ? 'text-[#667eea] border-[#667eea]' : 'text-[#666] border-transparent hover:text-[#667eea]'}`}
                  onClick={() => setActiveTab('activities')}
                >
                  🕒 Activity Log
@@ -272,50 +272,50 @@ export default function RevisionHistory({ fileId, isOpen, onClose, onViewRevisio
 
             {activeTab === 'versions' ? (
                data.revisions.length === 0 ? (
-                 <div className="no-revisions">
+                 <div className="bg-[#f8f9fa] rounded-lg p-10 text-center">
                    <p>📝 No previous versions available yet.</p>
-                   <p className="hint">Versions are created when you save changes in the editor.</p>
+                   <p className="text-sm text-[#999] mt-2">Versions are created when you save changes in the editor.</p>
                  </div>
                ) : (
-                 <div className="revisions-list">
-                   <table>
+                 <div className="overflow-x-auto">
+                   <table className="w-full border-collapse">
                      <thead>
                        <tr>
-                         <th>Version</th>
-                         <th>Saved By</th>
-                         <th>Date</th>
-                         <th>Size</th>
-                         <th>Actions</th>
+                         <th className="bg-[#f8f9fa] font-semibold text-[#333] text-sm uppercase tracking-wide px-4 py-3 text-left border-b border-[#eee]">Version</th>
+                         <th className="bg-[#f8f9fa] font-semibold text-[#333] text-sm uppercase tracking-wide px-4 py-3 text-left border-b border-[#eee]">Saved By</th>
+                         <th className="bg-[#f8f9fa] font-semibold text-[#333] text-sm uppercase tracking-wide px-4 py-3 text-left border-b border-[#eee]">Date</th>
+                         <th className="bg-[#f8f9fa] font-semibold text-[#333] text-sm uppercase tracking-wide px-4 py-3 text-left border-b border-[#eee]">Size</th>
+                         <th className="bg-[#f8f9fa] font-semibold text-[#333] text-sm uppercase tracking-wide px-4 py-3 text-left border-b border-[#eee]">Actions</th>
                        </tr>
                      </thead>
                      <tbody>
                        {data.revisions.map((revision) => (
-                         <tr key={revision.id}>
-                           <td>
-                             <span className="version-badge">v{revision.version}</span>
+                         <tr key={revision.id} className="hover:bg-[#fafafa] transition-colors">
+                           <td className="px-4 py-3 border-b border-[#eee]">
+                             <span className="bg-[#e8eeff] text-[#667eea] py-1 px-2.5 rounded font-semibold text-sm">v{revision.version}</span>
                            </td>
-                           <td>
-                               <div className="user-info">
-                                 <div className="user-details">
+                           <td className="px-4 py-3 border-b border-[#eee]">
+                               <div className="flex flex-col gap-1">
+                                 <div className="flex items-center gap-2">
                                      {revision.user?.picture ? (
-                                         <img src={revision.user.picture} alt="" className="user-avatar" />
+                                         <img src={revision.user.picture} alt="" className="w-6 h-6 rounded-full object-cover" />
                                      ) : (
-                                         <div className="user-avatar-placeholder">
+                                         <div className="w-6 h-6 rounded-full bg-[#cbd5e1] text-white flex items-center justify-center text-[0.7rem] font-bold">
                                              {(revision.user?.name || revision.savedBy).charAt(0).toUpperCase()}
                                          </div>
                                      )}
-                                     <span className="user-name">{revision.user?.name || revision.savedBy}</span>
+                                     <span className="font-medium text-[#333]">{revision.user?.name || revision.savedBy}</span>
                                  </div>
    
                                  {revision.aiChangeSummary && (
-                                   <div className="ai-insight" title="AI-generated change summary">
-                                     <span className="ai-icon">✨</span>
+                                   <div className="flex items-start gap-1.5 text-xs text-[#667eea] bg-[#eef2ff] px-2.5 py-1.5 rounded-md border border-[#c7d2fe] max-w-[300px] mt-1" title="AI-generated change summary">
+                                     <span className="text-[0.9rem]">✨</span>
                                      {revision.aiChangeSummary}
                                    </div>
                                  )}
                                  
                                  <button 
-                                   className="view-summary-btn"
+                                   className="bg-transparent border-none text-[#667eea] text-xs cursor-pointer text-left p-0 underline mt-1"
                                    onClick={() => handleToggleSummary(revision)}
                                    disabled={loadingSummary === revision.id}
                                  >
@@ -324,27 +324,27 @@ export default function RevisionHistory({ fileId, isOpen, onClose, onViewRevisio
                                  </button>
                                  
                                  {expandedSummary === revision.id && revision.aiFileSummary && (
-                                   <div className="file-summary-box">
-                                     <strong>📄 File Content Summary:</strong>
-                                     <p>{revision.aiFileSummary}</p>
+                                   <div className="mt-1.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-md p-2.5 text-[0.85rem] text-[#475569] animate-fadeIn">
+                                     <strong className="block mb-1 text-[#334155]">📄 File Content Summary:</strong>
+                                     <p className="m-0 leading-snug">{revision.aiFileSummary}</p>
                                    </div>
                                  )}
-                              </div>
+                               </div>
                             </td>
-                            <td>{formatDate(revision.createdAt)}</td>
-                            <td>{formatFileSize(revision.fileSize)}</td>
-                            <td className="actions">
+                            <td className="px-4 py-3 border-b border-[#eee] text-sm text-[#333]">{formatDate(revision.createdAt)}</td>
+                            <td className="px-4 py-3 border-b border-[#eee] text-sm text-[#333]">{formatFileSize(revision.fileSize)}</td>
+                            <td className="px-4 py-3 border-b border-[#eee] flex gap-2">
                               <button
                                 onClick={() => handleView(revision.version, revision.downloadUrl)}
                                 disabled={viewing === revision.version}
-                                className="action-btn view-btn"
+                                className="w-8 h-8 rounded-md cursor-pointer text-base transition-all flex items-center justify-center bg-[#e3f2fd] hover:bg-[#bbdefb] disabled:opacity-50 disabled:cursor-not-allowed"
                                 title="View this version"
                               >
                                 {viewing === revision.version ? '...' : '👁️'}
                               </button>
                               <button
                                 onClick={() => handleDownload(revision.downloadUrl)}
-                                className="action-btn download-btn"
+                                className="w-8 h-8 rounded-md cursor-pointer text-base transition-all flex items-center justify-center bg-[#e8f5e9] hover:bg-[#c8e6c9]"
                                 title="Download this version"
                               >
                                 ⬇️
@@ -357,624 +357,111 @@ export default function RevisionHistory({ fileId, isOpen, onClose, onViewRevisio
                   </div>
                )
             ) : (
-              <div className="activity-timeline">
-                {data.activities && data.activities.length > 0 ? (
-                  [...data.activities].reverse().map((activity, idx) => (
-                    <div key={idx} className="timeline-item">
-                      <div className="timeline-marker"></div>
-                      <div className="timeline-content">
-                        {/* User identity for the action */}
-                        {activity.userId && (
-                          <div className="activity-user">
-                             {activity.userId.picture ? (
-                               <img src={activity.userId.picture} alt="" className="user-avatar" />
-                             ) : (
-                               <div className="user-avatar-placeholder">
-                                 {activity.userId.firstName?.charAt(0)}
-                               </div>
-                             )}
-                             <span className="user-name">{activity.userId.firstName} {activity.userId.lastName}</span>
-                          </div>
-                        )}
-
-                        <div className="timeline-header">
-                          <span className="activity-action">
-                            {activity.action} {activity.itemId?.toString() !== data.fileId?.toString() ? "INTO THIS FOLDER" : ""}
-                          </span>
-                          <span className="activity-time">{formatDate(activity.timestamp)}</span>
-                        </div>
-                        {activity.action === 'MOVE' ? (
-                           <div className="move-details">
-                             {activity.itemId?.toString() !== data.fileId?.toString() && (
-                               <div className="item-identification">
-                                 {activity.isFolder ? (
-                                   <IconFolder size={18} style={{ color: '#4f46e5' }} />
-                                 ) : (
-                                   <Icon 
-                                     iconSize={20} 
-                                     scaleFactor="_1.5x"
-                                     extension={checkAndRetrieveExtension(activity.itemName || '') as FileTypeIconMapKeys} 
-                                   />
-                                 )}
-                                 <strong>{activity.itemName}</strong>
-                               </div>
-                             )}
-                             <div className="move-path">
-                               <span className="path-label">From:</span>
-                               <button 
-                                 className="path-link"
-                                 onClick={() => {
-                                   if (activity.fromId) {
-                                     onClose();
-                                     navigate(`/folder/${activity.fromId}`);
-                                   } else if (activity.fromName === 'Home') {
-                                     onClose();
-                                     navigate(`/`);
-                                   }
-                                 }}
-                               >
-                                 {activity.fromName}
-                               </button>
-                             </div>
-                             <div className="move-path">
-                               <span className="path-label">To:</span>
-                               <button 
-                                 className="path-link highlight"
-                                 onClick={() => {
-                                   if (activity.toId) {
-                                     onClose();
-                                     navigate(`/folder/${activity.toId}`);
-                                   } else if (activity.toName === 'Home') {
-                                     onClose();
-                                     navigate(`/`);
-                                   }
-                                 }}
-                               >
-                                 {activity.toName}
-                               </button>
-                             </div>
+               <div className="flex flex-col gap-4 relative p-2 ml-2">
+                 {data.activities && data.activities.length > 0 ? (
+                   [...data.activities].reverse().map((activity, idx) => (
+                     <div key={idx} className="relative pl-6 border-l-2 border-[#e0e0e0]">
+                       <div className="absolute left-[-5px] top-1 w-2.5 h-2.5 rounded-full bg-[#667eea]"></div>
+                       <div className="bg-[#f8f9fa] rounded-lg p-3 text-sm mb-2">
+                         {/* User identity for the action */}
+                         {activity.userId && (
+                           <div className="flex items-center gap-2 mb-2">
+                              {activity.userId.picture ? (
+                                <img src={activity.userId.picture} alt="" className="w-5 h-5 rounded-full object-cover" />
+                              ) : (
+                                <div className="w-5 h-5 rounded-full bg-[#cbd5e1] text-white flex items-center justify-center text-[0.6rem] font-bold">
+                                  {activity.userId.firstName?.charAt(0)}
+                                </div>
+                              )}
+                              <span className="font-medium text-[#333] text-xs leading-none">{activity.userId.firstName} {activity.userId.lastName}</span>
                            </div>
-                        ) : (
-                          <p className="activity-details">{activity.details}</p>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="no-activities">
-                    <p>No activity recorded for this file yet.</p>
-                  </div>
-                )}
-              </div>
+                         )}
+
+                         <div className="flex justify-between items-start mb-1 gap-2 flex-wrap">
+                           <span className="font-semibold text-[#333]">
+                             {activity.action} {activity.itemId?.toString() !== data.fileId?.toString() ? "INTO THIS FOLDER" : ""}
+                           </span>
+                           <span className="text-xs text-[#999] whitespace-nowrap">{formatDate(activity.timestamp)}</span>
+                         </div>
+                         {activity.action === 'MOVE' ? (
+                            <div className="bg-white p-2 rounded border border-[#eee] mt-2">
+                              {activity.itemId?.toString() !== data.fileId?.toString() && (
+                                <div className="flex items-center gap-2 mb-2 pb-2 border-b border-[#eee]">
+                                  {activity.isFolder ? (
+                                    <IconFolder size={18} className="text-[#4f46e5]" />
+                                  ) : (
+                                    <Icon 
+                                      iconSize={20} 
+                                      scaleFactor="_1.5x"
+                                      extension={checkAndRetrieveExtension(activity.itemName || '') as FileTypeIconMapKeys} 
+                                    />
+                                  )}
+                                  <strong>{activity.itemName}</strong>
+                                </div>
+                              )}
+                              <div className="flex items-center gap-1 text-xs text-[#666] mb-1">
+                                <span className="font-medium">From:</span>
+                                <button 
+                                  className="bg-transparent border-none text-[#667eea] cursor-pointer hover:underline p-0 text-xs"
+                                  onClick={() => {
+                                    if (activity.fromId) {
+                                      onClose();
+                                      navigate(`/folder/${activity.fromId}`);
+                                    } else if (activity.fromName === 'Home') {
+                                      onClose();
+                                      navigate(`/`);
+                                    }
+                                  }}
+                                >
+                                  {activity.fromName}
+                                </button>
+                              </div>
+                              <div className="flex items-center gap-1 text-xs text-[#666] mb-1">
+                                <span className="font-medium">To:</span>
+                                <button 
+                                  className="bg-transparent border-none text-[#667eea] cursor-pointer hover:underline p-0 text-xs font-semibold"
+                                  onClick={() => {
+                                    if (activity.toId) {
+                                      onClose();
+                                      navigate(`/folder/${activity.toId}`);
+                                    } else if (activity.toName === 'Home') {
+                                      onClose();
+                                      navigate(`/`);
+                                    }
+                                  }}
+                                >
+                                  {activity.toName}
+                                </button>
+                              </div>
+                            </div>
+                         ) : (
+                           <p className="m-0 text-[#555]">{activity.details}</p>
+                         )}
+                       </div>
+                     </div>
+                   ))
+                 ) : (
+                   <div className="bg-[#f8f9fa] rounded-lg p-10 text-center text-[#666]">
+                     <p>No activity recorded for this file yet.</p>
+                   </div>
+                 )}
+               </div>
             )}
            </div>
          )}
          
          {mediaPreview && (
-          <div className="media-preview-overlay" onClick={() => setMediaPreview(null)}>
-            <div className="media-preview-content" onClick={(e) => e.stopPropagation()}>
-               <button className="close-preview-btn" onClick={() => setMediaPreview(null)}>×</button>
-               {mediaPreview.type === 'image' && <img src={mediaPreview.url} alt="Preview" />}
-               {mediaPreview.type === 'video' && <video src={mediaPreview.url} controls autoPlay />}
-               {mediaPreview.type === 'audio' && <audio src={mediaPreview.url} controls autoPlay />}
+          <div className="fixed inset-0 bg-black/85 z-[2000] flex items-center justify-center backdrop-blur-sm" onClick={() => setMediaPreview(null)}>
+            <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+               <button className="absolute -top-10 -right-10 bg-white/20 hover:bg-white/30 rounded-full w-10 h-10 border-none text-white text-2xl flex items-center justify-center cursor-pointer transition-colors backdrop-blur-md z-[2001]" onClick={() => setMediaPreview(null)}>×</button>
+               {mediaPreview.type === 'image' && <img src={mediaPreview.url} alt="Preview" className="max-w-full max-h-[90vh] rounded-lg shadow-2xl" />}
+               {mediaPreview.type === 'video' && <video src={mediaPreview.url} controls autoPlay className="max-w-full max-h-[90vh] rounded-lg shadow-2xl" />}
+               {mediaPreview.type === 'audio' && <audio src={mediaPreview.url} controls autoPlay className="w-[300px]" />}
             </div>
           </div>
         )}
        </div>
-
-      <style>{`
-        .revision-history-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.6);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 1000;
-          backdrop-filter: blur(4px);
-        }
-
-        .revision-history-modal {
-          background: white;
-          border-radius: 12px;
-          width: 90%;
-          max-width: 700px;
-          max-height: 80vh;
-          overflow: hidden;
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-          animation: slideUp 0.3s ease;
-        }
-
-        @keyframes slideUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        .revision-history-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 20px 24px;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
-        }
-
-        .revision-history-header h2 {
-          margin: 0;
-          font-size: 1.4rem;
-          font-weight: 600;
-        }
-
-        .close-btn {
-          background: rgba(255, 255, 255, 0.2);
-          border: none;
-          color: white;
-          font-size: 1.5rem;
-          width: 36px;
-          height: 36px;
-          border-radius: 50%;
-          cursor: pointer;
-          transition: background 0.2s;
-        }
-
-        .close-btn:hover {
-          background: rgba(255, 255, 255, 0.3);
-        }
-
-        .revision-history-loading,
-        .revision-history-error,
-        .no-revisions {
-          padding: 40px;
-          text-align: center;
-          color: #666;
-        }
-
-        .spinner {
-          width: 40px;
-          height: 40px;
-          border: 3px solid #f3f3f3;
-          border-top: 3px solid #667eea;
-          border-radius: 50%;
-          animation: spin 1s linear infinite;
-          margin: 0 auto 16px;
-        }
-
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-
-        .revision-history-error button {
-          margin-top: 12px;
-          padding: 8px 20px;
-          background: #667eea;
-          color: white;
-          border: none;
-          border-radius: 6px;
-          cursor: pointer;
-        }
-
-        .revision-history-content {
-          padding: 24px;
-          max-height: calc(80vh - 80px);
-          overflow-y: auto;
-        }
-
-        .file-info {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 12px 16px;
-          background: #f8f9fa;
-          border-radius: 8px;
-          margin-bottom: 20px;
-        }
-
-        .current-version {
-          background: #667eea;
-          color: white;
-          padding: 4px 12px;
-          border-radius: 20px;
-          font-size: 0.85rem;
-        }
-
-        .no-revisions {
-          background: #f8f9fa;
-          border-radius: 8px;
-          padding: 40px;
-        }
-
-        .no-revisions .hint {
-          font-size: 0.9rem;
-          color: #999;
-          margin-top: 8px;
-        }
-
-        .revisions-list table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-
-        .revisions-list th,
-        .revisions-list td {
-          padding: 12px 16px;
-          text-align: left;
-          border-bottom: 1px solid #eee;
-        }
-
-        .revisions-list th {
-          background: #f8f9fa;
-          font-weight: 600;
-          color: #333;
-          font-size: 0.85rem;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-
-        .revisions-list tr:hover {
-          background: #fafafa;
-        }
-
-        .version-badge {
-          background: #e8eeff;
-          color: #667eea;
-          padding: 4px 10px;
-          border-radius: 4px;
-          font-weight: 600;
-          font-size: 0.9rem;
-        }
-
-        .actions {
-          display: flex;
-          gap: 8px;
-        }
-
-        .action-btn {
-          width: 32px;
-          height: 32px;
-          border: none;
-          border-radius: 6px;
-          cursor: pointer;
-          font-size: 1rem;
-          transition: all 0.2s;
-        }
-
-        .download-btn {
-          background: #e8f5e9;
-        }
-
-        .download-btn:hover {
-          background: #c8e6c9;
-        }
-
-        .view-btn {
-          background: #e3f2fd;
-        }
-
-        .view-btn:hover {
-          background: #bbdefb;
-        }
-
-        .view-btn:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .user-info {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-
-        .ai-insight {
-          display: flex;
-          align-items: start;
-          gap: 6px;
-          font-size: 0.8rem;
-          color: #667eea;
-          background: #eef2ff;
-          padding: 6px 10px;
-          border-radius: 6px;
-          border: 1px solid #c7d2fe;
-          max-width: 300px;
-        }
-
-        .user-name {
-          font-weight: 500;
-          color: #333;
-        }
-
-        .user-details {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .user-avatar {
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            object-fit: cover;
-        }
-
-        .user-avatar-placeholder {
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            background: #cbd5e1;
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.7rem;
-            font-weight: bold;
-        }
-
-        .view-summary-btn {
-          background: none;
-          border: none;
-          color: #667eea;
-          font-size: 0.8rem;
-          cursor: pointer;
-          text-align: left;
-          padding: 0;
-          text-decoration: underline;
-          margin-top: 4px;
-        }
-
-        .file-summary-box {
-          margin-top: 6px;
-          background: #f8fafc;
-          border: 1px solid #e2e8f0;
-          border-radius: 6px;
-          padding: 10px;
-          font-size: 0.85rem;
-          color: #475569;
-          animation: fadeIn 0.3s ease;
-        }
-
-        .file-summary-box strong {
-          display: block;
-          margin-bottom: 4px;
-          color: #334155;
-        }
-
-        .file-summary-box p {
-          margin: 0;
-          line-height: 1.4;
-        }
-
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-5px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-
-        .ai-icon {
-          font-size: 0.9rem;
-        }
-
-        .media-preview-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0,0,0,0.85);
-          z-index: 2000;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          backdrop-filter: blur(5px);
-        }
-
-        .media-preview-content {
-          position: relative;
-          max-width: 90vw;
-          max-height: 90vh;
-        }
-
-        .media-preview-content img,
-        .media-preview-content video {
-          max-width: 100%;
-          max-height: 90vh;
-          border-radius: 8px;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-        }
-
-        .media-preview-content audio {
-          width: 300px;
-        }
-
-        .close-preview-btn {
-          position: absolute;
-          top: -40px;
-          right: -40px;
-          background: none;
-          border: none;
-          color: white;
-          font-size: 2rem;
-          cursor: pointer;
-        }
-
-        /* Tabs */
-        .tab-buttons {
-          display: flex;
-          gap: 12px;
-          margin-bottom: 24px;
-          border-bottom: 1px solid #eee;
-          padding-bottom: 12px;
-        }
-
-        .tab-btn {
-          padding: 8px 16px;
-          border: none;
-          background: #f1f5f9;
-          color: #64748b;
-          border-radius: 8px;
-          font-size: 0.9rem;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .tab-btn:hover {
-          background: #e2e8f0;
-        }
-
-        .tab-btn.active {
-          background: #667eea;
-          color: white;
-          box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-        }
-
-        /* Activity Timeline */
-        .activity-timeline {
-          padding: 10px 0;
-        }
-
-        .timeline-item {
-          position: relative;
-          padding-left: 24px;
-          padding-bottom: 24px;
-          border-left: 2px solid #eef2ff;
-        }
-
-        .timeline-item:last-child {
-          border-left-color: transparent;
-        }
-
-        .timeline-marker {
-          position: absolute;
-          left: -7px;
-          top: 0;
-          width: 12px;
-          height: 12px;
-          border-radius: 50%;
-          background: #667eea;
-          border: 2px solid white;
-          box-shadow: 0 0 0 2px #eef2ff;
-        }
-
-        .timeline-content {
-          background: #f8fafc;
-          padding: 12px 16px;
-          border-radius: 10px;
-          border: 1px solid #e2e8f0;
-        }
-
-        .timeline-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 8px;
-        }
-
-        .activity-action {
-          font-size: 0.75rem;
-          font-weight: 700;
-          color: #667eea;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-
-        .activity-time {
-          font-size: 0.75rem;
-          color: #94a3b8;
-        }
-
-        .activity-details {
-          margin: 0;
-          font-size: 0.9rem;
-          color: #334155;
-        }
-
-        .activity-user {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-bottom: 8px;
-          padding-bottom: 8px;
-          border-bottom: 1px solid #f1f5f9;
-        }
-
-        .item-identification {
-          font-size: 0.85rem;
-          color: #1e293b;
-          margin-bottom: 10px;
-          background: #fff;
-          padding: 6px 10px;
-          border-radius: 6px;
-          border-left: 3px solid #667eea;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .move-details {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-
-        .move-path {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .path-label {
-          font-size: 0.8rem;
-          color: #64748b;
-          min-width: 40px;
-        }
-
-        .path-link {
-          font-size: 0.85rem;
-          font-weight: 600;
-          color: #334155;
-          padding: 2px 8px;
-          background: white;
-          border-radius: 4px;
-          border: 1px solid #e2e8f0;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .path-link:hover {
-          background: #f8fafc;
-          border-color: #cbd5e1;
-          color: #1e293b;
-        }
-
-        .path-link.highlight {
-          color: #667eea;
-          background: #eef2ff;
-          border-color: #c7d2fe;
-        }
-
-        .path-link.highlight:hover {
-          background: #e0e7ff;
-          border-color: #a5b4fc;
-        }
-
-        .no-activities {
-          text-align: center;
-          padding: 40px;
-          color: #94a3b8;
-          background: #f8fafc;
-          border-radius: 12px;
-          border: 2px dashed #e2e8f0;
-        }
-      `}</style>
     </div>
   );
 }
+

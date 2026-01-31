@@ -1,4 +1,4 @@
-import "./index.css";
+
 import { formatBytes } from "@/utils/formatBytes";
 import { FileItem } from "./types";
 import Icon from "../Icon";

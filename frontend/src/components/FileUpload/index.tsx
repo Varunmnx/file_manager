@@ -1,4 +1,4 @@
-import "./index.css";
+
 import { FileTreeItem } from "./types";
 import { useDropzone } from "./hooks/useDropZone";
 import { FolderItemComponent } from "./FolderItem";

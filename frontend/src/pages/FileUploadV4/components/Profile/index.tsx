@@ -1,40 +1,17 @@
 import { useAppSelector } from "@/store";
 import { clear } from "@/utils";
-import { Menu, Avatar, Text, UnstyledButton, Group, rem } from "@mantine/core";
+import { Menu, Avatar, Text, UnstyledButton, Group } from "@mantine/core";
 import {
-  IconFolder,
   IconLogout,
-  IconTrash,
-  IconUpload,
   IconUser,
-  IconFilePlus,
-  IconArrowsMove,
 } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 
-interface Props {
-  deleteAllUploads: () => void;
-  onResourceUpload: () => void;
-  openCreateNewFolder: () => void;
-  openCreateNewFile: () => void;
-  moveSelectedUploads: () => void;
-  hasSelectedItems: boolean;
-}
-
-const Profile = ({
-  deleteAllUploads,
-  onResourceUpload,
-  openCreateNewFolder,
-  openCreateNewFile,
-  moveSelectedUploads,
-  hasSelectedItems,
-}: Props) => {
+const Profile = () => {
   const profile = useAppSelector((state) => state.profileSlice.profile);
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    // Add your logout logic here
-    // e.g., dispatch(logout()), clear tokens, etc.
     clear()
     window.location.reload()
   };
@@ -56,7 +33,7 @@ const Profile = ({
               alt={profile?.firstName || 'User'}
               radius="xl"
               size="md"
-              style={{ cursor: 'pointer' }}
+              className="cursor-pointer"
               imageProps={{ 
                 crossOrigin: 'anonymous',
                 referrerPolicy: 'no-referrer'
@@ -81,54 +58,18 @@ const Profile = ({
         <Menu.Divider />
 
         <Menu.Item
-          leftSection={<IconUser style={{ width: rem(14), height: rem(14) }} />}
+          leftSection={<IconUser className="w-3.5 h-3.5" />}
           onClick={() => navigate("/profile")}
         >
           My Profile
         </Menu.Item>
 
-        <Menu.Label>Application</Menu.Label>
-        <Menu.Item
-          onClick={onResourceUpload}
-          leftSection={<IconUpload size={14} />}
-        >
-          Upload
-        </Menu.Item>
-        {hasSelectedItems && (
-          <>
-            <Menu.Item
-              onClick={deleteAllUploads}
-              leftSection={<IconTrash size={14} />}
-              color="red"
-            >
-              Delete Selected
-            </Menu.Item>
-            <Menu.Item
-              onClick={moveSelectedUploads}
-              leftSection={<IconArrowsMove size={14} />}
-              color="blue"
-            >
-              Move Selected
-            </Menu.Item>
-          </>
-        )}
-        <Menu.Item
-          onClick={openCreateNewFolder}
-          leftSection={<IconFolder size={14} />}
-        >
-          Create New Folder
-        </Menu.Item>
-        <Menu.Item
-          onClick={openCreateNewFile}
-          leftSection={<IconFilePlus size={14} />}
-        >
-          Create New File
-        </Menu.Item>
+        <Menu.Divider />
 
         <Menu.Item
           color="red"
           leftSection={
-            <IconLogout style={{ width: rem(14), height: rem(14) }} />
+            <IconLogout className="w-3.5 h-3.5" />
           }
           onClick={handleLogout}
         >

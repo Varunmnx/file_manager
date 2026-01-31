@@ -29,13 +29,7 @@ const Login = () => {
 
   return (
     <Box
-      style={{
-        maxWidth: 400,
-        margin: "0 auto",
-        padding: "1rem",
-        border: "1px solid #eaeaea",
-        borderRadius: "8px",
-      }}
+      className="max-w-[400px] mx-auto p-4 border border-[#eaeaea] rounded-lg"
     >
       <form onSubmit={handleSubmit(onSubmit)}>
         {/* Name Input */}

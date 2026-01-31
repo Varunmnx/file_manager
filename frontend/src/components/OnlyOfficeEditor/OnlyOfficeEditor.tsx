@@ -298,17 +298,17 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose, revisionVe
 
   if (error) {
     return (
-      <Box style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', padding: '1rem' }}>
+      <Box className="flex items-center justify-center h-screen p-4">
         <Alert 
           icon={<IconAlertCircle size={20} />} 
           title="Error Loading Editor" 
           color="red"
           variant="filled"
-          style={{ maxWidth: '500px' }}
+          className="max-w-[500px]"
         >
           <Text size="sm" mb="md">{error}</Text>
           <Text size="xs" mb="xs" fw={600}>Troubleshooting:</Text>
-          <Text size="xs" component="ul" style={{ paddingLeft: '1.5rem' }}>
+          <Text size="xs" component="ul" className="pl-6">
             <li>Ensure OnlyOffice is running (port 3600)</li>
             <li>Check backend is accessible (port 3000)</li>
             <li>Verify network connectivity</li>
@@ -326,7 +326,7 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose, revisionVe
 
   if (loading) {
     return (
-      <Box style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: '1rem' }}>
+      <Box className="flex items-center justify-center h-screen flex-col gap-4">
         <Loader size="lg" />
         <div>
           <Text size="md" fw={500} ta="center">Loading {fileName}...</Text>
@@ -337,20 +337,20 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose, revisionVe
   }
 
   return (
-    <Box style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'white' }}>
+    <Box className="h-screen flex flex-col bg-white">
       {/* Office-style Header with Breadcrumb */}
-      <Paper shadow="xs" p="xs" style={{ borderBottom: '1px solid #e9ecef', borderRadius: 0 }}>
+      <Paper shadow="xs" p="xs" className="border-b border-[#e9ecef] rounded-none">
         <Group justify="space-between" align='center' wrap="nowrap">
           {/* Left: Breadcrumb Navigation */}
-          <Group gap="xs" style={{ flex: 1, minWidth: 0 }}>
+          <Group gap="xs" className="flex-1 min-w-0">
             <Breadcrumbs 
               separator="›"
               separatorMargin="xs"
-              style={{ flexWrap: 'nowrap', overflow: 'hidden' }}
+              className="flex-nowrap overflow-hidden"
             >
 
               
-              <Text size="sm" fw={600} truncate style={{ maxWidth: '300px' }}>
+              <Text size="sm" fw={600} truncate className="max-w-[300px]">
                 {fileName}
               </Text>
               
@@ -360,7 +360,7 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose, revisionVe
                   color="orange" 
                   size="sm"
                   leftSection={<IconClock size={12} />}
-                  style={{ textTransform: 'none' }}
+                  className="normal-case"
                 >
                   Version {revisionVersion}
                 </Badge>
@@ -374,7 +374,7 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose, revisionVe
                   variant="dot" 
                   color="green" 
                   size="sm"
-                  style={{ textTransform: 'none' }}
+                  className="normal-case"
                 >
                   Editing
                 </Badge>
@@ -386,7 +386,7 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose, revisionVe
                   color="gray" 
                   size="sm"
                   leftSection={<IconLock size={12} />}
-                  style={{ textTransform: 'none' }}
+                  className="normal-case"
                 >
                   Read-only
                 </Badge>
@@ -398,21 +398,16 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose, revisionVe
           <Group gap="xs" wrap="nowrap">
             {/* User Info */}
             {currentUser && !isRevisionMode && (
-              <Group gap="xs" style={{ 
-                padding: '0.25rem 0.75rem', 
-                background: '#f8f9fa', 
-                borderRadius: '6px',
-                border: '1px solid #e9ecef'
-              }}>
+              <Group gap="xs" className="py-1 px-3 bg-[#f8f9fa] rounded-md border border-[#e9ecef]">
                 <Avatar 
                   size="sm" 
                   color="blue" 
                   radius="xl"
-                  style={{ fontWeight: 600 }}
+                  className="font-semibold"
                 >
                   {currentUser.name.charAt(0).toUpperCase()}
                 </Avatar>
-                <Text size="xs" fw={500} style={{ whiteSpace: 'nowrap' }}>
+                <Text size="xs" fw={500} className="whitespace-nowrap">
                   {currentUser.name}
                 </Text>
               </Group>
@@ -448,11 +443,7 @@ export default function OnlyOfficeEditor({ fileId, fileName, onClose, revisionVe
       {/* Editor Container */}
       <Box 
         ref={containerRef}
-        style={{ 
-          flex: 1, 
-          width: '100%', 
-          height: 'calc(100vh - 60px)' 
-        }}
+        className="flex-1 w-full h-[calc(100vh-60px)]"
         suppressHydrationWarning
       />
       

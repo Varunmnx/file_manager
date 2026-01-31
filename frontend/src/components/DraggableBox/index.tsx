@@ -70,20 +70,11 @@ const DraggableBox = ({isMinimized, children, width}:Props) => {
     <Flex
       ref={widgetRef}
       onMouseDown={handleMouseDown}
+      className={`fixed bg-white rounded-xl shadow-2xl z-[1000] flex flex-col select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} ${!isMinimized ? 'max-h-[400px]' : ''}`}
       style={{
-        position: "fixed",
         left: position.x,
         top: position.y,
-        backgroundColor: "white",
-        borderRadius: "12px",
-        boxShadow: "0 10px 40px rgba(0, 0, 0, 0.25)",
         width: width ?? "320px",
-        maxHeight: isMinimized ? "auto" : "400px",
-        zIndex: 1000,
-        cursor: isDragging ? "grabbing" : "grab",
-        userSelect: "none",
-        display: "flex",
-        flexDirection: "column",
       }}
     >
       {children}
