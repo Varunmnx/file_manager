@@ -9,7 +9,7 @@ export class FileRevisionRepository {
   constructor(
     @InjectModel(FileRevisionEntity.name)
     private readonly revisionModel: Model<FileRevisionDocument>,
-  ) {}
+  ) { }
 
   async create(revision: Partial<FileRevisionEntity>): Promise<FileRevisionDocument> {
     return await this.revisionModel.create(revision);
@@ -58,5 +58,9 @@ export class FileRevisionRepository {
     const objectId = typeof fileId === 'string' ? new Types.ObjectId(fileId) : fileId;
     const result = await this.revisionModel.deleteMany({ fileId: objectId });
     return result.deletedCount;
+  }
+  async update(id: string | Types.ObjectId, update: Partial<FileRevisionEntity>): Promise<FileRevisionDocument | null> {
+    const objectId = typeof id === 'string' ? new Types.ObjectId(id) : id;
+    return await this.revisionModel.findByIdAndUpdate(objectId, { $set: update }, { new: true }).exec();
   }
 }

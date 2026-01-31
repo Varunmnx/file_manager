@@ -15,7 +15,7 @@ import * as mammoth from 'mammoth';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 import { extractText } from 'unpdf';
 import * as XLSX from 'xlsx';
-import { FileRevisionDocument } from './entities/file-revision.entity';
+import { FileRevisionEntity, FileRevisionDocument } from './entities/file-revision.entity';
 
 // Interface for the authenticated user in the request
 interface AuthenticatedRequest extends Request {
@@ -217,20 +217,22 @@ export class OnlyOfficeController {
           const userId = body.actions?.[0]?.userid || 'unknown';
 
           // Save revision record immediately (Async AI will update it later)
-          const revision = await this.fileRevisionRepository.create({
-            fileId: new Types.ObjectId(fileId),
-            version: currentVersion,
-            revisionFileName,
-            fileSize: statSync(revisionPath).size,
-            savedBy: userName,
-            userId: userId !== 'unknown' ? userId : undefined,
-            documentKey: body.key,
-            changesUrl: body.changesurl,
-            serverVersion: body.history?.serverVersion,
-            documentHash: body.history?.changes?.[0]?.documentSha256,
-            aiChangeSummary: 'Analysis pending...', // Placeholder
-            createdAt: new Date()
-          });
+          const revisionBuilder = FileRevisionEntity.builder()
+            .setFileId(new Types.ObjectId(fileId))
+            .setVersion(currentVersion)
+            .setRevisionFileName(revisionFileName)
+            .setFileSize(statSync(revisionPath).size)
+            .setSavedBy(userName)
+            .setCreatedAt(new Date())
+            .setAiChangeSummary('Analysis pending...');
+
+          if (userId !== 'unknown') revisionBuilder.setUserId(userId);
+          if (body.key) revisionBuilder.setDocumentKey(body.key);
+          if (body.changesurl) revisionBuilder.setChangesUrl(body.changesurl);
+          if (body.history?.serverVersion) revisionBuilder.setServerVersion(body.history.serverVersion);
+          if (body.history?.changes?.[0]?.documentSha256) revisionBuilder.setDocumentHash(body.history.changes[0].documentSha256);
+
+          const revision = await this.fileRevisionRepository.create(revisionBuilder.build());
 
           // Trigger background analysis (Fire & Forget)
           this.handleAsyncAIAnalysis(revision, revisionPath, buffer, ext, file.fileName).catch(e =>
@@ -633,14 +635,16 @@ export class OnlyOfficeController {
 
       // Update revision record
       if (aiChangeSummary) {
-        revision.aiChangeSummary = aiChangeSummary;
-        await revision.save();
+        const builder = revision.toBuilder();
+        builder.setAiChangeSummary(aiChangeSummary);
+        await this.fileRevisionRepository.update(revision._id, builder.build());
         this.logger.log(`Background AI analysis complete for ${fileName}`);
       }
     } catch (e) {
       this.logger.error(`Fatal error in background AI analysis for ${fileName}`, e);
-      revision.aiChangeSummary = 'Analysis failed due to server error.';
-      await revision.save();
+      const builder = revision.toBuilder();
+      builder.setAiChangeSummary('Analysis failed due to server error.');
+      await this.fileRevisionRepository.update(revision._id, builder.build());
     }
   }
 }

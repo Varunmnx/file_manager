@@ -61,7 +61,137 @@ export class FileRevisionEntity {
   // AI-generated summary of the file content at this version
   @Prop({ type: String })
   public aiFileSummary: string;
+
+  public static builder() {
+    return new FileRevisionEntity.Builder();
+  }
+
+  public toBuilder() {
+    const builder = FileRevisionEntity.builder();
+    builder._id = this._id;
+    builder.fileId = this.fileId;
+    builder.version = this.version;
+    builder.revisionFileName = this.revisionFileName;
+    builder.fileSize = this.fileSize;
+    builder.savedBy = this.savedBy;
+    builder.userId = this.userId;
+    builder.documentKey = this.documentKey;
+    builder.changesUrl = this.changesUrl;
+    builder.serverVersion = this.serverVersion;
+    builder.createdAt = this.createdAt;
+    builder.documentHash = this.documentHash;
+    builder.aiChangeSummary = this.aiChangeSummary;
+    builder.aiFileSummary = this.aiFileSummary;
+    return builder;
+  }
+
+  public static Builder = class {
+    _id: Types.ObjectId;
+    fileId: Types.ObjectId;
+    version: number;
+    revisionFileName: string;
+    fileSize: number;
+    savedBy: string;
+    userId: string;
+    documentKey: string;
+    changesUrl: string;
+    serverVersion: string;
+    createdAt: Date;
+    documentHash: string;
+    aiChangeSummary: string;
+    aiFileSummary: string;
+
+    public setFileId(value: Types.ObjectId) {
+      this.fileId = value;
+      return this;
+    }
+
+    public setVersion(value: number) {
+      this.version = value;
+      return this;
+    }
+
+    public setRevisionFileName(value: string) {
+      this.revisionFileName = value;
+      return this;
+    }
+
+    public setFileSize(value: number) {
+      this.fileSize = value;
+      return this;
+    }
+
+    public setSavedBy(value: string) {
+      this.savedBy = value;
+      return this;
+    }
+
+    public setUserId(value: string) {
+      this.userId = value;
+      return this;
+    }
+
+    public setDocumentKey(value: string) {
+      this.documentKey = value;
+      return this;
+    }
+
+    public setChangesUrl(value: string) {
+      this.changesUrl = value;
+      return this;
+    }
+
+    public setServerVersion(value: string) {
+      this.serverVersion = value;
+      return this;
+    }
+
+    public setCreatedAt(value: Date) {
+      this.createdAt = value;
+      return this;
+    }
+
+    public setDocumentHash(value: string) {
+      this.documentHash = value;
+      return this;
+    }
+
+    public setAiChangeSummary(value: string) {
+      this.aiChangeSummary = value;
+      return this;
+    }
+
+    public setAiFileSummary(value: string) {
+      this.aiFileSummary = value;
+      return this;
+    }
+
+    public build(): FileRevisionEntity {
+      const e = new FileRevisionEntity();
+
+      if (!this.createdAt) this.createdAt = new Date();
+      if (!this._id) this._id = new Types.ObjectId();
+
+      e._id = this._id;
+      e.fileId = this.fileId;
+      e.version = this.version;
+      e.revisionFileName = this.revisionFileName;
+      e.fileSize = this.fileSize;
+      e.savedBy = this.savedBy || 'Anonymous User';
+      e.userId = this.userId;
+      e.documentKey = this.documentKey;
+      e.changesUrl = this.changesUrl;
+      e.serverVersion = this.serverVersion;
+      e.createdAt = this.createdAt;
+      e.documentHash = this.documentHash;
+      e.aiChangeSummary = this.aiChangeSummary;
+      e.aiFileSummary = this.aiFileSummary;
+
+      return e;
+    }
+  };
 }
 
 export const FileRevisionSchema = SchemaFactory.createForClass(FileRevisionEntity);
 FileRevisionSchema.index({ fileId: 1, version: -1 });
+FileRevisionSchema.loadClass(FileRevisionEntity);

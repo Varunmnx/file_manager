@@ -9,6 +9,7 @@ import { Types } from 'mongoose';
 import { FileRevisionRepository } from '../../onlyoffice/repositories/file-revision.repository';
 import { ActivityRepository } from '../repositories/activity.repository';
 
+import { Activity } from '../entities/activity.entity';
 
 export interface UploadSession {
     fileName: string;
@@ -506,19 +507,21 @@ export class UploadPoolService {
         itemBuilder.setParents(newParents);
 
         // Log activity in separate collection
-        await this.activityRepository.create({
-            action: 'MOVE',
-            details: `Moved from ${oldParentName} to ${destName}`,
-            itemId: item._id,
-            itemName: item.fileName,
-            isFolder: item.isFolder,
-            fromId: oldParentId,
-            fromName: oldParentName,
-            toId: destId,
-            toName: destName,
-            timestamp: new Date(),
-            userId: userId ? toObjectId(userId) : undefined
-        });
+        const activityBuilder = Activity.builder()
+            .setAction('MOVE')
+            .setDetails(`Moved from ${oldParentName} to ${destName}`)
+            .setItemId(item._id)
+            .setItemName(item.fileName)
+            .setIsFolder(item.isFolder)
+            .setTimestamp(new Date());
+
+        if (oldParentId) activityBuilder.setFromId(oldParentId);
+        if (oldParentName) activityBuilder.setFromName(oldParentName);
+        if (destId) activityBuilder.setToId(destId);
+        if (destName) activityBuilder.setToName(destName);
+        if (userId) activityBuilder.setUserId(toObjectId(userId));
+
+        await this.activityRepository.create(activityBuilder.build());
 
         await this.fileFolderRepository.update(item._id, itemBuilder.build());
 

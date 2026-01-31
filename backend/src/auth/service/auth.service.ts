@@ -1,5 +1,5 @@
 import { Injectable, ConflictException, UnauthorizedException, BadRequestException } from '@nestjs/common';
-import { UserDocument } from '../entities/user.entity';
+import { User, UserDocument } from '../entities/user.entity';
 import { UserRepository } from '../repository/user.repository';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -24,58 +24,73 @@ export class UsersService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private readonly emailService: EmailService,
-  ) {}
+  ) { }
 
   async findByEmail(email: string): Promise<UserDocument | null> {
-    const result = await this.userRepository.findOne({ email });
-    return result;
+    return this.userRepository.findByEmail(email);
   }
 
   async findById(id: string): Promise<UserDocument | null> {
-    return this.userRepository.findOne({ _id: id });
+    return this.userRepository.findById(id);
   }
 
   async findByGoogleId(googleId: string): Promise<UserDocument | null> {
-    return this.userRepository.findOne({ googleId });
+    return this.userRepository.findByGoogleId(googleId);
   }
 
   async register(user: CreateUserDto): Promise<UserDocument> {
     // Google users are automatically verified
-    const userWithVerification = { ...user, isVerified: true };
-    return this.userRepository.create(userWithVerification);
+    const userBuilder = User.builder()
+      .setEmail(user.email)
+      .setFirstName(user.firstName)
+      .setLastName(user.lastName)
+      .setIsVerified(true);
+
+    if (user.picture) userBuilder.setPicture(user.picture);
+    if (user.googleId) userBuilder.setGoogleId(user.googleId);
+    if (user.accessToken) userBuilder.setAccessToken(user.accessToken);
+    if (user.refreshToken) userBuilder.setRefreshToken(user.refreshToken);
+    if (user.password) userBuilder.setPassword(user.password);
+
+    return this.userRepository.create(userBuilder.build());
   }
 
   async login(user: CreateUserDto) {
-      let existingUser = await this.findByEmail(user.email);
+    let existingUser = await this.findByEmail(user.email);
 
-      if (!existingUser) {
-        existingUser = await this.register(user);
-      } else {
-        // Link Google ID and verify email if matched by email
-        let updated = false;
-        
-        if (!existingUser.googleId && user.googleId) {
-            existingUser.googleId = user.googleId;
-            updated = true;
-        }
-        
-        if (!existingUser.isVerified) {
-            existingUser.isVerified = true;
-            existingUser.verificationToken = undefined;
-            updated = true;
-        }
+    if (!existingUser) {
+      existingUser = await this.register(user);
+    } else {
+      // Link Google ID and verify email if matched by email
+      let updated = false;
+      const builder = existingUser.toBuilder();
 
-        if (updated) {
-            await existingUser.save();
-        }
+      if (!existingUser.googleId && user.googleId) {
+        builder.setGoogleId(user.googleId);
+        updated = true;
       }
-      return this.generateToken(existingUser);
+
+      if (!existingUser.isVerified) {
+        builder.setIsVerified(true);
+        builder.setVerificationToken(undefined);
+        updated = true;
+      }
+
+      if (updated) {
+        const updatedUser = builder.build();
+        existingUser = await this.userRepository.findOneAndUpdate(
+          { _id: existingUser._id },
+          { $set: updatedUser }
+        ) as UserDocument;
+      }
+    }
+    return this.generateToken(existingUser);
   }
 
   private generateToken(user: UserDocument | any) {
-      const userId = user._id?.toString() || (user as any).id?.toString();
-      const payload = { email: user.email, _id: userId };
-      return this.jwtService.sign(payload, { secret: this.configService.getOrThrow('JWT_SECRET'), expiresIn: '1d' });
+    const userId = user._id?.toString() || (user as any).id?.toString();
+    const payload = { email: user.email, _id: userId };
+    return this.jwtService.sign(payload, { secret: this.configService.getOrThrow('JWT_SECRET'), expiresIn: '1d' });
   }
 
   // --- Local Auth ---
@@ -104,29 +119,35 @@ export class UsersService {
 
     const hashedPassword = this.hashPassword(dto.password);
     const verificationToken = crypto.randomBytes(32).toString('hex');
-    
-    const newUser = await this.userRepository.create({
-      ...dto,
-      password: hashedPassword,
-      provider: 'local',
-      picture: dto.picture || '',
-      isVerified: false,
-      verificationToken,
-    });
+
+    const userBuilder = User.builder()
+      .setEmail(dto.email)
+      .setFirstName(dto.firstName)
+      .setLastName(dto.lastName)
+      .setPassword(hashedPassword)
+      .setProvider('local')
+      .setIsVerified(false)
+      .setVerificationToken(verificationToken);
+
+    if (dto.picture) userBuilder.setPicture(dto.picture);
+
+    const newUser = await this.userRepository.create(userBuilder.build());
 
     await this.emailService.sendVerificationEmail(newUser.email, verificationToken);
     return newUser;
   }
 
   async verifyEmail(token: string) {
-    const user = await this.userRepository.findOne({ verificationToken: token });
+    const user = await this.userRepository.findByVerificationToken(token);
     if (!user) {
-        throw new BadRequestException('Invalid verification token');
+      throw new BadRequestException('Invalid verification token');
     }
 
-    user.isVerified = true;
-    user.verificationToken = undefined;
-    await user.save();
+    const builder = user.toBuilder()
+      .setIsVerified(true)
+      .setVerificationToken(undefined);
+
+    await this.userRepository.findOneAndUpdate({ _id: user._id }, { $set: builder.build() });
     return { message: 'Email verified successfully' };
   }
 
@@ -137,11 +158,11 @@ export class UsersService {
     }
 
     if (!user.password && user.provider === 'google') {
-       throw new UnauthorizedException('Please login with Google');
+      throw new UnauthorizedException('Please login with Google');
     }
 
     if (!user.password) {
-       throw new UnauthorizedException('Invalid credentials (no password set)');
+      throw new UnauthorizedException('Invalid credentials (no password set)');
     }
 
     const isValid = this.verifyPassword(dto.password, user.password);
@@ -150,18 +171,18 @@ export class UsersService {
     }
 
     if (!user.isVerified) {
-        throw new UnauthorizedException('Please verify your email first');
+      throw new UnauthorizedException('Please verify your email first');
     }
 
     return {
-       token: this.generateToken(user),
-       user: {
-         email: user.email,
-         firstName: user.firstName,
-         lastName: user.lastName,
-         picture: user.picture,
-         _id: user._id
-       }
+      token: this.generateToken(user),
+      user: {
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        picture: user.picture,
+        _id: user._id
+      }
     };
   }
 }
