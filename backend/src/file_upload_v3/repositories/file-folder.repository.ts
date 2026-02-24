@@ -216,4 +216,26 @@ export class FileFolderRepository extends EntityRepository<UploadDocument> {
     // Using $set ensures Mongoose treats this as an update operation properly
     await this.entityModel.findByIdAndUpdate(toObjectId(id), { $set: update });
   }
+
+  /**
+   * Find incomplete uploads that haven't been modified since the given threshold date.
+   * Used for cleaning up stale/abandoned uploads.
+   * An upload is incomplete if uploadedChunks.length < totalChunks.
+   */
+  async findStaleUploads(thresholdDate: Date): Promise<UploadDocument[]> {
+    try {
+      const docs = await this.entityModel.find({
+        isFolder: false,
+        lastActivity: { $lt: thresholdDate },
+        // Use aggregation expression to check if upload is incomplete
+        $expr: {
+          $lt: [{ $size: '$uploadedChunks' }, '$totalChunks']
+        }
+      });
+      return docs;
+    } catch (error) {
+      console.error('Error finding stale uploads:', error);
+      throw new Error('Could not find stale uploads');
+    }
+  }
 }

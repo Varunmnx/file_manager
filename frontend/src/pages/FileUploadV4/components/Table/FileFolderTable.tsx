@@ -1,12 +1,11 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { Table, ActionIcon, Avatar, Group, Text, Menu, Skeleton } from "@mantine/core";
+import { Table, ActionIcon, Avatar, Group, Text, Menu, Skeleton, Box } from "@mantine/core";
 import Icon from "@/components/Icon";
 import { UploadedFile, CreatorInfo } from "@/types/file.types";
 import { FileTypeIconMapKeys } from "@/utils/fileTypeIcons";
 import { checkAndRetrieveExtension } from "../../utils/getFileIcon";
 import { formatBytes } from "@/utils/formatBytes";
 import { getShortDate } from "@/utils/getDateTime";
-import { IconFolder, IconInfoCircle, IconFileText, IconTrash, IconDotsVertical, IconHistory } from "@tabler/icons-react";
+import { IconFolder, IconInfoCircle, IconFileText, IconTrash, IconDotsVertical, IconHistory, IconEye } from "@tabler/icons-react";
 import { MouseEvent as ReactMouseEvent, useState, useRef, useEffect } from "react";
 import useFileGetStatus from "../../hooks/useFileGetStatus";
 import { useChunkedUpload } from "../../context/chunked-upload.context";
@@ -15,6 +14,7 @@ import { RevisionHistory } from "@/components/RevisionHistory";
 import useUpdateActivity from "../../hooks/useUpdateActivity";
 import useMoveItem from "../../hooks/useMoveItem";
 import { toast } from "sonner";
+import { isMediaFile } from "../Modal/MediaPreviewModal";
 
 interface Props {
   allSelected: boolean;
@@ -28,6 +28,7 @@ interface Props {
   onFileFolderRowClick?: (entityId: string, isDirectory: boolean, ctrlKey: boolean) => void;
   onFileFolderRowDoubleClick?: (entityId: string, isDirectory: boolean) => void;
   isLoading?: boolean;
+  onPreviewMedia?: (file: UploadedFile) => void;
 }
 
 // Helper function to check if file is supported by OnlyOffice
@@ -45,7 +46,8 @@ const FileFolderTable = (props: Props) => {
     data,
     onFileFolderRowClick,
     onFileFolderRowDoubleClick,
-    isLoading
+    isLoading,
+    onPreviewMedia
   } = props;
 
   const getFileDetailsMutation = useFileGetStatus()
@@ -118,7 +120,7 @@ const FileFolderTable = (props: Props) => {
     
     if (targetFolder.isFolder) {
       // Check if we're dragging the folder onto itself
-      try {
+      try { 
         const dataStr = e.dataTransfer.getData("application/json");
         if (dataStr) {
           const parsedData = JSON.parse(dataStr);
@@ -177,6 +179,7 @@ const FileFolderTable = (props: Props) => {
         loading: `Moving ${draggedIds.length} item(s)...`,
         success: () => {
           refetchFilesAndFolders();
+          setSelectedFiles(new Set());
           return "Moved successfully";
         },
         error: (err) => err?.response?.data?.message || "Failed to move some items"
@@ -424,7 +427,7 @@ const FileFolderTable = (props: Props) => {
             }}
           >
             <Table.Td>
-               <div 
+               <Box 
                  draggable
                  onDragStart={(e) => handleDragStart(e, file)}
                  className="flex items-center cursor-grab active:cursor-grabbing w-fit"
@@ -436,7 +439,7 @@ const FileFolderTable = (props: Props) => {
                       <Icon extension={checkAndRetrieveExtension(file.fileName) as FileTypeIconMapKeys} iconSize={24} scaleFactor="_1.5x" />
                    )}
                  </Avatar>
-               </div>
+               </Box>
             </Table.Td>
             <Table.Td>
                 <span 
@@ -448,16 +451,16 @@ const FileFolderTable = (props: Props) => {
                 </span>
             </Table.Td>
             <Table.Td>
-              <div className="flex items-center justify-start gap-2">
+              <Box className="flex items-center justify-start gap-2">
                 {formatBytes(file.fileSize)}
                 <IconInfoCircle className="cursor-pointer action-icon" onClick={(e)=>handleMoreInformation(e as any ,file._id  as string)} size={16}/>
-              </div>
+              </Box>
             </Table.Td>
             <Table.Td>{getShortDate(file?.createdAt as unknown as string)}</Table.Td>
             <Table.Td>{renderUser(file.createdBy)}</Table.Td>
             <Table.Td>{renderUser(file.lastViewedBy, file.lastViewedAt)}</Table.Td>
             <Table.Td>
-              <div className="flex gap-2 justify-end" onClick={(e) => e.stopPropagation()}>
+              <Box className="flex gap-2 justify-end" onClick={(e) => e.stopPropagation()}>
                 <Menu position="bottom-end" shadow="md" width={200} withinPortal>
                   <Menu.Target>
                     <ActionIcon variant="subtle" color="gray" className="action-icon">
@@ -476,6 +479,17 @@ const FileFolderTable = (props: Props) => {
                         }}
                       >
                         Open in OnlyOffice
+                      </Menu.Item>
+                    )}
+                    {!file.isFolder && isMediaFile(file.fileName).isMedia && (
+                      <Menu.Item
+                        leftSection={<IconEye size={14} />}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onPreviewMedia?.(file);
+                        }}
+                      >
+                        Preview
                       </Menu.Item>
                     )}
                     <Menu.Item
@@ -499,7 +513,7 @@ const FileFolderTable = (props: Props) => {
                     </Menu.Item>
                   </Menu.Dropdown>
                 </Menu>
-              </div>
+              </Box>
             </Table.Td>
           </Table.Tr>
         )))}

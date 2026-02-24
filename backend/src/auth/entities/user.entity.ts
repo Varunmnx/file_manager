@@ -169,8 +169,5 @@ export class User {
 
 export const UserSchema = SchemaFactory.createForClass(User);
 
-// Add indexes for better query performance
-UserSchema.index({ email: 1 });
-UserSchema.index({ googleId: 1 });
-
+// Note: email and googleId already have indexes via `unique: true` in @Prop decorator
 UserSchema.loadClass(User);

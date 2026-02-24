@@ -237,7 +237,7 @@ const ResourceUploadModal = ({ opened, close, initialFiles = [] }: Props) => {
      
       folderPathAgainstFiles.clear();
       setIsLoading(false);
-      close();
+      close(); // Close the upload modal, but Upload Manager stays visible
     },
     [close, createFolderMutation, folderId, folderPathAgainstFiles, processFolders, setUploadQueue],
   );

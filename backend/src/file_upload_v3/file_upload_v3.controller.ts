@@ -161,4 +161,65 @@ export class UploadController {
     return await this.uploadPoolService.moveItem(uploadId, dto.newParentId, userId);
   }
 
+  /**
+   * Serve media files (images/videos) for inline preview
+   */
+  @Get('media/:uploadId')
+  @UseGuards(JwtAuthGuard)
+  async getMedia(@Param('uploadId') uploadId: string, @Res() res: Response) {
+    try {
+      const file = await this.uploadPoolService.getUploadStatus(uploadId);
+      if (!file) {
+        return res.status(404).send('File not found');
+      }
+
+      const filePath = join(process.cwd(), 'uploads', file.fileName);
+      const fs = require('fs');
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).send('File not found on disk');
+      }
+
+      const fileName = file.fileName.split('/').pop() || file.fileName;
+      const ext = fileName.split('.').pop()?.toLowerCase() || '';
+
+      // Media MIME types
+      const mimeTypes: Record<string, string> = {
+        // Images
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        png: 'image/png',
+        gif: 'image/gif',
+        webp: 'image/webp',
+        svg: 'image/svg+xml',
+        bmp: 'image/bmp',
+        ico: 'image/x-icon',
+        // Videos
+        mp4: 'video/mp4',
+        webm: 'video/webm',
+        ogg: 'video/ogg',
+        mov: 'video/quicktime',
+        avi: 'video/x-msvideo',
+        mkv: 'video/x-matroska',
+        // Audio (bonus)
+        mp3: 'audio/mpeg',
+        wav: 'audio/wav',
+        flac: 'audio/flac',
+        m4a: 'audio/mp4',
+      };
+
+      const contentType = mimeTypes[ext] || 'application/octet-stream';
+
+      res.set({
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=31536000',
+      });
+
+      res.sendFile(filePath);
+    } catch (error) {
+      console.error('Error serving media:', error);
+      return res.status(500).send('Error serving media');
+    }
+  }
+
 }
+

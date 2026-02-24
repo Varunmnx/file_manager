@@ -304,13 +304,21 @@ export class UploadPoolService {
         await this.resetParentFolderSizes([uploadId]);
         this.cleanupChunks(uploadId);
 
-        // Delete all file revisions for this file
+        // Delete all file revisions and activities for this file
         await this.cleanupRevisions(uploadId);
+        await this.cleanupActivities(uploadId);
 
-        // Delete all children recursively (and their revisions)
+        // Delete all children recursively (and their revisions + activities)
         const children = await this.fileFolderRepository.findDescendants(session._id);
+        const childIds = children.map(child => child._id.toString());
+
         for (const child of children) {
             await this.cleanupRevisions(child._id.toString());
+        }
+
+        // Clean up activities for all children in batch
+        if (childIds.length > 0) {
+            await this.cleanupActivitiesBatch(childIds);
         }
 
         await this.fileFolderRepository.deleteMany({
@@ -354,6 +362,36 @@ export class UploadPoolService {
         }
     }
 
+    /**
+     * Delete all activities related to a file/folder
+     */
+    private async cleanupActivities(fileId: string): Promise<void> {
+        try {
+            const deletedCount = await this.activityRepository.deleteByItemId(fileId);
+            if (deletedCount > 0) {
+                console.log(`[UploadPoolService] Deleted ${deletedCount} activities for file ${fileId}`);
+            }
+        } catch (error) {
+            console.error(`[UploadPoolService] Error cleaning up activities for file ${fileId}:`, error);
+            // Don't throw - continue with file deletion even if activity cleanup fails
+        }
+    }
+
+    /**
+     * Delete activities for multiple files/folders at once
+     */
+    private async cleanupActivitiesBatch(fileIds: string[]): Promise<void> {
+        try {
+            const deletedCount = await this.activityRepository.deleteByItemIds(fileIds);
+            if (deletedCount > 0) {
+                console.log(`[UploadPoolService] Deleted ${deletedCount} activities for ${fileIds.length} files`);
+            }
+        } catch (error) {
+            console.error(`[UploadPoolService] Error cleaning up activities batch:`, error);
+            // Don't throw - continue with file deletion even if activity cleanup fails
+        }
+    }
+
     async getAllUploads() {
         const allUploadSessions = await this.fileFolderRepository.findRootItems();
         return allUploadSessions.filter((session) =>
@@ -373,12 +411,37 @@ export class UploadPoolService {
     async deleteAllUploadedFiles(uploadIds: string[]) {
         await this.resetParentFolderSizes(uploadIds);
 
-        // Delete all revisions for each file
+        // Collect all IDs to delete (including folder children)
+        const allIdsToDelete = new Set<string>(uploadIds);
+        const allItemsToCleanup: string[] = [...uploadIds];
+
+        // For each item, check if it's a folder and get all descendants
         for (const uploadId of uploadIds) {
-            await this.cleanupRevisions(uploadId);
+            const item = await this.fileFolderRepository.findById(uploadId);
+            if (item?.isFolder) {
+                const descendants = await this.fileFolderRepository.findDescendants(item._id);
+                for (const descendant of descendants) {
+                    const descendantId = descendant._id.toString();
+                    if (!allIdsToDelete.has(descendantId)) {
+                        allIdsToDelete.add(descendantId);
+                        allItemsToCleanup.push(descendantId);
+                    }
+                }
+            }
         }
 
-        await this.fileFolderRepository.deleteMany({ _id: uploadIds?.map((id) => toObjectId(id)) });
+        // Delete all revisions for each file/folder
+        for (const itemId of allItemsToCleanup) {
+            await this.cleanupRevisions(itemId);
+        }
+
+        // Clean up all activities in batch for better performance
+        await this.cleanupActivitiesBatch(allItemsToCleanup);
+
+        // Delete all items from database
+        await this.fileFolderRepository.deleteMany({
+            _id: { $in: Array.from(allIdsToDelete).map((id) => toObjectId(id)) }
+        });
 
         // Remove everything in chunks dir
         const dir = join(this.chunksDir);
@@ -392,7 +455,7 @@ export class UploadPoolService {
 
         return {
             success: true,
-            message: 'All uploads cancelled',
+            message: 'All uploads deleted',
         };
     }
 

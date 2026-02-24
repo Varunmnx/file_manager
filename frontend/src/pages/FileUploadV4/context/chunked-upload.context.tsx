@@ -19,6 +19,11 @@ import useFileGetStatus from "../hooks/useFileGetStatus";
 import { useParams } from "react-router-dom";
 import usePauseUpload from "../hooks/usePauseUpload";
 import useDeleteAll from "../hooks/useDeleteAll";
+import {
+  persistUpload,
+  updatePersistedUpload,
+  removePersistedUpload,
+} from "../utils/upload-persistence";
 
 export interface UploadQueueState {
   type: "file";
@@ -102,6 +107,29 @@ export function ChunkedUploadProvider({
     refetchFilesAndFolders();
   }, [folderId]);
 
+  // Warn user before closing/refreshing if uploads are in progress
+  useEffect(() => {
+    const hasActiveUploads = uploadQueue.some(
+      u => u.status === "uploading" || u.status === "initiating" || u.status === "paused" || u.status === "idle"
+    );
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasActiveUploads) {
+        e.preventDefault();
+        e.returnValue = "You have uploads in progress. Are you sure you want to leave?";
+        return e.returnValue;
+      }
+    };
+
+    if (hasActiveUploads) {
+      window.addEventListener("beforeunload", handleBeforeUnload);
+    }
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [uploadQueue]);
+
   const splitFileIntoChunks = useCallback(
     (file: File): ChunkData[] => {
       const chunks: ChunkData[] = [];
@@ -148,6 +176,27 @@ export function ChunkedUploadProvider({
 
       const uploadedSet = new Set(uploadedChunkIndices);
 
+      // Check if all chunks are already uploaded (can happen if pause occurred right after last chunk completed)
+      if (uploadedChunkIndices.length === chunks.length) {
+        console.log(`All chunks already uploaded for file: ${file.name}, marking as complete`);
+        setUploadQueue((prev) =>
+          prev.map((upload) => {
+            if (upload.name === file.name && upload.status !== "cancelled") {
+              return {
+                ...upload,
+                status: "completed" as const,
+                isPaused: false,
+                percentage: 100,
+                uploadedChunks: [...uploadedChunkIndices],
+              };
+            }
+            return upload;
+          }),
+        );
+        refetchFilesAndFolders();
+        return;
+      }
+
       for (let i = 0; i < chunks.length; i++) {
         if (uploadedSet.has(i)) {
           continue;
@@ -186,6 +235,7 @@ export function ChunkedUploadProvider({
                       return {
                         ...upload,
                         status: "uploading" as const,
+                        isPaused: false,
                         percentage: overallProgress,
                         currentChunkProgress: chunkProgress,
                         totalChunks: chunks.length,
@@ -225,6 +275,7 @@ export function ChunkedUploadProvider({
                 return {
                   ...upload,
                   status: isComplete ? ("completed" as const) : ("uploading" as const),
+                  isPaused: false,
                   percentage: isComplete
                     ? 100
                     : calculateOverallProgress(uploadedChunkIndices.length, chunks.length, 0),
@@ -242,8 +293,22 @@ export function ChunkedUploadProvider({
           }
 
         } catch (error) {
-          if (error instanceof Error && error.name === "AbortError") {
+          // Check if this was a pause action (AbortController with "paused" reason)
+          const abortReason = currentUploadAbortController.current?.signal?.reason;
+          const isPausedAbort = abortReason === "paused";
+          
+          // Check for both DOMException AbortError and Axios CanceledError
+          const isAbortError = 
+            (error instanceof DOMException && error.name === "AbortError") ||
+            (error instanceof Error && error.name === "CanceledError") ||
+            (error instanceof Error && (error as any).code === "ERR_CANCELED");
+          
+          if (isAbortError && isPausedAbort) {
+            console.log(`Upload paused for chunk at index ${i}`);
+            // Don't change status here - pauseUpload already handles this
+          } else if (isAbortError) {
             console.log(`Upload cancelled for chunk at index ${i}`);
+            // Cancelled by user - status is handled by cancelCurrentUpload
           } else {
             console.error(`Error uploading chunk:`, error);
             setUploadQueue((prev) =>
@@ -251,18 +316,37 @@ export function ChunkedUploadProvider({
                 if (upload.name === file.name) {
                   return {
                     ...upload,
-                    status: (error as any)?.config?.signal?.reason === "paused" 
-                      ? "paused" 
-                      : "error" as const,
+                    status: "error" as const,
+                    isPaused: false,
                     error: error instanceof Error ? error.message : "Upload failed",
                   };
                 }
                 return upload;
               }),
             );
-          } 
+          }
           break;
         }
+      }
+
+      // Final check: ensure completion status is set if all chunks were uploaded
+      // This handles edge cases where the loop might exit without setting completion
+      if (uploadedChunkIndices.length === chunks.length) {
+        setUploadQueue((prev) =>
+          prev.map((upload) => {
+            if (upload.name === file.name && upload.status !== "cancelled" && upload.status !== "completed") {
+              return {
+                ...upload,
+                status: "completed" as const,
+                isPaused: false,
+                percentage: 100,
+                uploadedChunks: [...uploadedChunkIndices],
+              };
+            }
+            return upload;
+          }),
+        );
+        refetchFilesAndFolders();
       }
     },
     [splitFileIntoChunks, calculateOverallProgress, refetchFilesAndFolders],
@@ -322,6 +406,19 @@ export function ChunkedUploadProvider({
           const totalChunks = chunks.length;
 
           if (response?.uploadId) {
+            // Persist upload info for resume capability
+            persistUpload({
+              uploadId: response.uploadId,
+              fileName: file.name,
+              fileSize: file.size,
+              totalChunks,
+              uploadedChunks: [],
+              parentId: file.parentId?.[0],
+              chunkSize,
+              timestamp: Date.now(),
+              originalPath: file.path,
+            });
+
             let completedChunks = 0;
             console.log("chunks", chunks);
             
@@ -406,10 +503,21 @@ export function ChunkedUploadProvider({
 
                 completedChunks++;
 
+                // Update persistence with current chunk progress
+                const uploadedChunksList = Array.from({ length: completedChunks }, (_, i) => i);
+                const isComplete = completedChunks === totalChunks;
+                
+                if (isComplete && response?.uploadId) {
+                  // Upload complete - remove from persistence
+                  removePersistedUpload(response.uploadId);
+                } else if (response?.uploadId) {
+                  // Update persistence with progress
+                  updatePersistedUpload(response.uploadId, uploadedChunksList);
+                }
+
                 setUploadQueue((prev) =>
                   prev.map((upload) => {
                     if (upload.name === file.name && upload.status !== "cancelled") {
-                      const isComplete = completedChunks === totalChunks;
                       return {
                         ...upload,
                         status: isComplete
@@ -430,11 +538,22 @@ export function ChunkedUploadProvider({
                   }),
                 );
               } catch (chunkError) {
-                if (
-                  chunkError instanceof Error &&
-                  chunkError.name === "AbortError"
-                ) {
-                  console.log(`Chunk upload cancelled for file: ${file.name}`);
+                // Check if this was a pause action
+                const abortReason = currentUploadAbortController.current?.signal?.reason;
+                const isPausedAbort = abortReason === "paused";
+                
+                // Check for both DOMException AbortError and Axios CanceledError
+                const isAbortError = 
+                  (chunkError instanceof DOMException && chunkError.name === "AbortError") ||
+                  (chunkError instanceof Error && chunkError.name === "CanceledError") ||
+                  (chunkError instanceof Error && (chunkError as any).code === "ERR_CANCELED");
+                
+                if (isAbortError) {
+                  if (isPausedAbort) {
+                    console.log(`Chunk upload paused for file: ${file.name}`);
+                  } else {
+                    console.log(`Chunk upload cancelled for file: ${file.name}`);
+                  }
                   break;
                 }
 
@@ -454,9 +573,8 @@ export function ChunkedUploadProvider({
                     if (upload.name === file.name) {
                       return {
                         ...upload,
-                        status: (chunkError as any)?.config?.signal?.reason === "paused"
-                          ? "paused"
-                          : "error" as const,
+                        status: "error" as const,
+                        isPaused: false,
                         error:
                           chunkError instanceof Error
                             ? chunkError.message
@@ -472,19 +590,36 @@ export function ChunkedUploadProvider({
           }
 
         } catch (error) {
-          if (error) {
+          // Check if this was a pause or cancel action
+          const abortReason = currentUploadAbortController.current?.signal?.reason;
+          const isPausedAbort = abortReason === "paused";
+          
+          // Check for abort errors (DOMException or Axios CanceledError)
+          const isAbortError = 
+            (error instanceof DOMException && error.name === "AbortError") ||
+            (error instanceof Error && error.name === "CanceledError") ||
+            (error instanceof Error && (error as any).code === "ERR_CANCELED");
+          
+          if (isAbortError && isPausedAbort) {
+            console.log(`Upload paused for file: ${file.name}`);
+            // Don't set error state for paused uploads
+          } else if (isAbortError) {
+            console.log(`Upload cancelled for file: ${file.name}`);
+            // Don't set error state for cancelled uploads
+          } else if (error) {
             console.log(`Upload error for file: ${file.name}`, error);
             setUploadQueue((prev) =>
               prev.map((upload) => {
                 if (
                   upload.name === file.name &&
-                  upload.status !== "cancelled"
+                  upload.status !== "cancelled" &&
+                  upload.status !== "paused"
                 ) {
                   return {
                     ...upload,
-                    status: (error as any)?.config?.signal?.reason === "paused"
-                      ? "paused"
-                      : "error" as const,
+                    status: "error" as const,
+                    isPaused: false,
+                    error: error instanceof Error ? error.message : "Upload failed",
                   };
                 }
                 return upload;
@@ -528,6 +663,11 @@ export function ChunkedUploadProvider({
       })
     );
 
+    // Remove from persistence
+    if (_id) {
+      removePersistedUpload(_id);
+    }
+
     const controller = currentUploadAbortController.current;
     console.log(controller);
     if (controller) {
@@ -550,43 +690,56 @@ export function ChunkedUploadProvider({
 
   const pauseUpload = useCallback(
     async (uploadQueueItem: UploadQueueState) => {
+      // Store the current pause state BEFORE toggling
+      const wasPaused = uploadQueueItem.isPaused;
+      
+      // Toggle UI state immediately for responsive feedback
       setUploadQueue((prev) =>
         prev.map((upload) => {
           if (upload._id === uploadQueueItem._id) {
             return {
               ...upload,
-              status: upload.isPaused ? "uploading" : ("paused" as const),
-              isPaused: !upload.isPaused,
+              status: wasPaused ? "uploading" : ("paused" as const),
+              isPaused: !wasPaused,
             };
           }
           return upload;
         }),
       );
-      
-      const controller = currentUploadAbortController.current;
 
-      if (controller) {
-        controller.abort("paused"); 
-      }
+      if (!wasPaused) {
+        // Was uploading, now pausing - abort the current request
+        const controller = currentUploadAbortController.current;
+        if (controller) {
+          controller.abort("paused");
+        }
 
-      const response = await getFileUploadState.mutateAsync(
-        uploadQueueItem._id as string,
-      );
-
-      if (uploadQueueItem.isPaused && uploadQueueItem._id) {
-        pauseUploadMutation.mutate(
-          {
-            uploadId: uploadQueueItem._id as string,
-            chunkIndex:
-              response?.uploadedChunks[response?.uploadedChunks.length - 1] ??
-              0,
-          },
-          {
-            onSuccess: () => {
-              resumeUpload(uploadQueueItem, response as UploadedFile);
-            },
-          },
-        );
+        // Call backend to clean up partial chunk
+        if (uploadQueueItem._id) {
+          const response = await getFileUploadState.mutateAsync(
+            uploadQueueItem._id as string,
+          );
+          
+          if (response?.uploadedChunks) {
+            pauseUploadMutation.mutate({
+              uploadId: uploadQueueItem._id as string,
+              chunkIndex: response.uploadedChunks.length > 0 
+                ? response.uploadedChunks[response.uploadedChunks.length - 1] + 1
+                : 0,
+            });
+          }
+        }
+      } else {
+        // Was paused, now resuming - fetch current state and continue upload
+        if (uploadQueueItem._id) {
+          const response = await getFileUploadState.mutateAsync(
+            uploadQueueItem._id as string,
+          );
+          
+          if (response) {
+            resumeUpload(uploadQueueItem, response as UploadedFile);
+          }
+        }
       }
     },
     [resumeUpload, getFileUploadState, pauseUploadMutation],

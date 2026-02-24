@@ -15,6 +15,7 @@ import useFileGetStatus from "./hooks/useFileGetStatus";
 import useMoveItem from "./hooks/useMoveItem";
 import Profile from "./components/Profile";
 import MoveItemModal from "./components/Modal/MoveItemModal";
+import MediaPreviewModal, { isMediaFile } from "./components/Modal/MediaPreviewModal";
 import { IconTrash, IconArrowsMove, IconFolderPlus, IconFilePlus, IconUpload, IconX } from "@tabler/icons-react";
 
 const ResourceUploadModal = lazy(() => import("./components/Modal/ResourceUploadModal"));
@@ -25,6 +26,7 @@ const CreateFileModal = lazy(() => import("./components/Modal/CreateFileModal"))
 const Page = () => {
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
+  const [previewFile, setPreviewFile] = useState<UploadedFile | null>(null);
   const { folderId } = useParams();
   const moveItemMutation = useMoveItem();
   const navigate = useNavigate();
@@ -51,6 +53,7 @@ const Page = () => {
   const deleteAllMutation = useDeleteAll();
   const createFolderMutation = useCreateFolder();
   const createFileMutation = useCreateFile();
+
 
   const { isDragging } = useDragAndDrop({
     onFilesDropped: (files) =>{
@@ -160,7 +163,6 @@ const Page = () => {
     const newSelected = new Set(selectedFiles);
     
     if (ctrlKey) {
-      // Ctrl+Click: Toggle selection (add/remove from multi-selection)
       if (newSelected.has(entityId)) {
         newSelected.delete(entityId);
       } else {
@@ -185,11 +187,17 @@ const Page = () => {
   const handleFileFolderDoubleClick = (entityId: string, isDirectory: boolean) => {
     if (isDirectory && entityId) {
       navigate(`/folder/${entityId}`);
-    } else if (!isDirectory) {
-       // Open file logic (e.g. OnlyOffice or Preview)
-       if (entityId) {
-           navigate(`/document/${entityId}`);
+    } else if (!isDirectory && entityId) {
+       const file = data?.find((f: UploadedFile) => f._id === entityId);
+       if (file) {
+         const { isMedia } = isMediaFile(file.fileName);
+         if (isMedia) {
+           setPreviewFile(file);
+           return;
+         }
        }
+       // Fallback to document editor/viewer
+       navigate(`/document/${entityId}`);
     }
   };
 
@@ -229,6 +237,7 @@ const Page = () => {
       loading: `Moving ${draggedIds.length} items...`,
       success: () => {
         refetch();
+        setSelectedFiles(new Set());
         return "Moved successfully";
       },
       error: (err) => err?.response?.data?.message || "Failed to move items"
@@ -280,6 +289,13 @@ const Page = () => {
           />
         )}
       </Suspense>
+      {previewFile && (
+        <MediaPreviewModal
+          opened={!!previewFile}
+          onClose={() => setPreviewFile(null)}
+          file={previewFile}
+        />
+      )}
       {itemsToMoveInModal.length > 0 && (
         <MoveItemModal
           opened={itemsToMoveInModal.length > 0}
@@ -292,15 +308,8 @@ const Page = () => {
           }}
         />
       )}
-      {
-        uploadQueue?.filter((file) => {
-          return (
-            file.status == "uploading" ||
-            file.status == "paused" ||
-            file.status == "initiating" ||
-            file.status == "idle"
-          );
-        })?.length > 0 && <LiveFileUploadController />}
+      {/* Upload Controller - manages its own visibility */}
+      <LiveFileUploadController />
         
       <div className="w-full max-w-7xl px-4 md:px-8 py-8">
         <div className="toolbar-container flex justify-between items-center mb-6">
@@ -403,12 +412,14 @@ const Page = () => {
               data={data ?? []}
               onFileFolderRowClick={handleFileFolderClick}
               onFileFolderRowDoubleClick={handleFileFolderDoubleClick}
+              onPreviewMedia={setPreviewFile}
             />
         </div>
       </div>
     </div>
   );
 };
+
 
 interface FileFolderLocationProps {
     folderIds: string[];

@@ -44,4 +44,37 @@ export class ActivityRepository {
             .sort({ timestamp: -1 })
             .exec();
     }
+
+    /**
+     * Delete all activities related to a specific item
+     * This includes activities where the item is the subject (itemId)
+     * or where the item is the source/destination (fromId, toId)
+     */
+    async deleteByItemId(itemId: string | Types.ObjectId): Promise<number> {
+        const objectId = new Types.ObjectId(itemId.toString());
+        const result = await this.activityModel.deleteMany({
+            $or: [
+                { itemId: objectId },
+                { fromId: objectId },
+                { toId: objectId }
+            ]
+        });
+        return result.deletedCount;
+    }
+
+    /**
+     * Delete activities for multiple items at once
+     */
+    async deleteByItemIds(itemIds: (string | Types.ObjectId)[]): Promise<number> {
+        const objectIds = itemIds.map(id => new Types.ObjectId(id.toString()));
+        const result = await this.activityModel.deleteMany({
+            $or: [
+                { itemId: { $in: objectIds } },
+                { fromId: { $in: objectIds } },
+                { toId: { $in: objectIds } }
+            ]
+        });
+        return result.deletedCount;
+    }
 }
+
