@@ -239,21 +239,37 @@ export class FileFolderRepository extends EntityRepository<UploadDocument> {
   }
 
   async checkDuplicate(fileName: string, parents: Types.ObjectId[]): Promise<void> {
-    const query: QueryFilter<UploadDocument> = {
-      fileName: fileName.trim(),
+    // Location filter: must be in the same folder
+    const locationCondition = parents && parents.length > 0
+      ? { parents }
+      : {
+        $or: [
+          { parents: { $exists: false } },
+          { parents: { $size: 0 } },
+          { parents: [] },
+        ],
+      };
+
+    // Completion filter: only block on completed files or folders
+    // (ignore orphaned incomplete records from failed uploads)
+    const completionCondition = {
+      $expr: {
+        $or: [
+          { $eq: ['$isFolder', true] },
+          { $gte: [{ $size: { $ifNull: ['$uploadedChunks', []] } }, '$totalChunks'] },
+        ],
+      },
     };
 
-    if (parents && parents.length > 0) {
-      query.parents = parents;
-    } else {
-      query.$or = [
-        { parents: { $exists: false } },
-        { parents: { $size: 0 } },
-        { parents: [] }
-      ];
-    }
+    const query = {
+      $and: [
+        { fileName: fileName.trim() },
+        locationCondition,
+        completionCondition,
+      ],
+    };
 
-    const existing = await this.entityModel.findOne(query);
+    const existing = await this.entityModel.findOne(query as any);
     if (existing) {
       throw new ConflictException(`A file or folder with the name "${fileName}" already exists in this location.`);
     }

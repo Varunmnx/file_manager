@@ -5,3 +5,7 @@ docker-compose up -d // start only office service
 - [x] working file load and versioning, file stored in the same server
 - [x] cloudflare r2 direct upload 
 - [x] file listing not working
+
+
+# kill all node process stopping our port or using it
+taskkill /F /IM node.exe 

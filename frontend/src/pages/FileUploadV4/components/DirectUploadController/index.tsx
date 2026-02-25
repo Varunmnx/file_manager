@@ -162,13 +162,18 @@ const DirectUploadController = () => {
                     if (xhr.status >= 200 && xhr.status < 300) {
                         resolve();
                     } else {
-                        reject(new Error(`R2 upload failed with status ${xhr.status}`));
+                        const errMsg = `R2 upload failed: HTTP ${xhr.status} — ${xhr.responseText?.slice(0, 200) || "no body"}`;
+                        console.error("[DirectUpload] R2 PUT failed:", errMsg);
+                        reject(new Error(errMsg));
                     }
                 };
 
                 xhr.onerror = () => {
                     abortControllers.current.delete(item.id);
-                    reject(new Error("Network error during upload to R2"));
+                    // Status 0 means CORS blocked or network error
+                    const corsHint = xhr.status === 0 ? " (possible CORS block — check R2 bucket CORS policy)" : "";
+                    console.error(`[DirectUpload] XHR network error${corsHint}`, { status: xhr.status });
+                    reject(new Error(`Network error uploading to R2${corsHint}`));
                 };
 
                 xhr.onabort = () => {
@@ -310,8 +315,8 @@ const DirectUploadController = () => {
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
                     className={`fixed bottom-5 left-5 z-[100000] flex items-center gap-2 px-4 py-3 rounded-xl border-none cursor-pointer transition-all shadow-lg ${isDragging
-                            ? "bg-orange-500 text-white scale-110 shadow-orange-200"
-                            : "bg-gradient-to-r from-orange-500 to-red-500 text-white hover:shadow-xl hover:scale-105"
+                        ? "bg-orange-500 text-white scale-110 shadow-orange-200"
+                        : "bg-gradient-to-r from-orange-500 to-red-500 text-white hover:shadow-xl hover:scale-105"
                         }`}
                     title="Direct R2 Upload"
                 >
@@ -415,8 +420,8 @@ const DirectUploadController = () => {
                         onDragLeave={handleDragLeave}
                         onDrop={handleDrop}
                         className={`mx-4 mt-3 mb-1 border-2 border-dashed rounded-xl p-3 text-center transition-all cursor-pointer ${isDragging
-                                ? "border-orange-400 bg-orange-50 text-orange-600"
-                                : "border-gray-200 bg-gray-50 text-gray-400 hover:border-orange-300 hover:text-orange-500"
+                            ? "border-orange-400 bg-orange-50 text-orange-600"
+                            : "border-gray-200 bg-gray-50 text-gray-400 hover:border-orange-300 hover:text-orange-500"
                             }`}
                         onClick={() => fileInputRef.current?.click()}
                     >

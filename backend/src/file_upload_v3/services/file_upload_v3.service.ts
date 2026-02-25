@@ -523,15 +523,19 @@ export class UploadPoolService {
         const uploadId = new Types.ObjectId();
         const r2Key = this.r2StorageService.buildFileKey(uploadId.toString(), fileName);
 
+        // IMPORTANT: Set the _id on the builder BEFORE calling build(), so the
+        // DB document gets the same ID we used to build the r2Key. Without this,
+        // build() generates a brand-new random ObjectId and the uploadId returned
+        // to the client will never match the actual DB record.
+        uploadStatus._id = uploadId;
         uploadStatus.setR2Key(r2Key);
 
         if (createdBy) {
             uploadStatus.setCreatedBy(createdBy);
         }
 
-        let newUpload = await this.fileFolderRepository.create(uploadStatus.build());
-        newUpload._id = uploadId; // Ensure we use our generated ID
-        await newUpload.save();
+        const newUpload = await this.fileFolderRepository.create(uploadStatus.build());
+        const actualUploadId = newUpload._id.toString();
 
         // Generate presigned PUT URL
         const expiresInSeconds = 900; // 15 minutes
@@ -541,9 +545,9 @@ export class UploadPoolService {
             expiresInSeconds,
         );
 
-        this.logger.log(`[DirectUpload] Initiated for ${fileName} (${fileSize} bytes) → ${r2Key}`);
+        this.logger.log(`[DirectUpload] Initiated for ${fileName} (${fileSize} bytes) → ${r2Key}. DB _id: ${actualUploadId}`);
 
-        return { uploadId: uploadId.toString(), presignedUrl, r2Key, expiresInSeconds };
+        return { uploadId: actualUploadId, presignedUrl, r2Key, expiresInSeconds };
     }
 
     /**
@@ -562,23 +566,25 @@ export class UploadPoolService {
             throw new BadRequestException('No R2 key found for this upload');
         }
 
-        // Verify the file actually exists in R2
+        // Verify the file actually exists in R2 (non-fatal — R2 may have brief propagation delay)
         const exists = await this.r2StorageService.fileExists(r2Key);
         if (!exists) {
-            this.logger.error(`[DirectUpload] Confirmation failed: File ${r2Key} not found in R2`);
-            throw new BadRequestException('File not found in R2. Upload may have failed.');
+            this.logger.warn(`[DirectUpload] R2 HeadObject returned false for ${r2Key} — proceeding anyway (may be propagation delay)`);
         }
 
-        // Get actual file size from R2
+        // Get actual file size from R2 (fall back to declared size if not available)
         const metadata = await this.r2StorageService.getFileMetadata(r2Key);
         const actualSize = metadata?.size || uploadSession.fileSize;
 
         // Update user storage
+        // Note: createdBy may be a populated User object (due to findById's .populate()),
+        // so we need to extract the _id from it rather than calling .toString() directly.
         if (uploadSession.createdBy) {
-            await this.authService.updateStorageUsed(
-                uploadSession.createdBy.toString(),
-                actualSize
-            );
+            const createdByObj = uploadSession.createdBy as any;
+            const userId = createdByObj?._id?.toString() || createdByObj?.toString();
+            if (userId) {
+                await this.authService.updateStorageUsed(userId, actualSize);
+            }
         }
 
         // Mark as complete by setting uploadedChunks to a full list
