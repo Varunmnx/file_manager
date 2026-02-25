@@ -10,9 +10,11 @@ import { FileRevisionEntity, FileRevisionSchema } from '../onlyoffice/entities/f
 import { FileRevisionRepository } from '../onlyoffice/repositories/file-revision.repository';
 import { Activity, ActivitySchema } from './entities/activity.entity';
 import { ActivityRepository } from './repositories/activity.repository';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
+    AuthModule,
     ScheduleModule.forRoot(),
     MongooseModule.forFeature([
       { name: UploadEntity.name, schema: UploadSchema },

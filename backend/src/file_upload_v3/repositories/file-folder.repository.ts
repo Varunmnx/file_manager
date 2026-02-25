@@ -154,7 +154,21 @@ export class FileFolderRepository extends EntityRepository<UploadDocument> {
     }
   }
 
-  // Find root level items (no parents)
+  // Find root level items (no parents) - FOR A SPECIFIC USER
+  async findRootItemsForUser(userId: string): Promise<UploadDocument[]> {
+    try {
+      const docs = await this.entityModel.find({
+        parents: { $size: 0 },
+        createdBy: toObjectId(userId),
+      }).populate('createdBy', 'firstName lastName email picture').populate('lastViewedBy', 'firstName lastName email picture');
+      return docs;
+    } catch (error) {
+      console.error('Error finding root items for user:', error);
+      throw new Error('Could not find root items');
+    }
+  }
+
+  // Find root level items (no parents) - ALL USERS (for admin/cleanup)
   async findRootItems(): Promise<UploadDocument[]> {
     try {
       const docs = await this.entityModel.find({
@@ -164,6 +178,43 @@ export class FileFolderRepository extends EntityRepository<UploadDocument> {
     } catch (error) {
       console.error('Error finding root items:', error);
       throw new Error('Could not find root items');
+    }
+  }
+
+  // Find direct children for a specific user (scoped)
+  async findDirectChildrenForUser(parentId: string | Types.ObjectId, userId: string): Promise<UploadDocument[]> {
+    try {
+      if (!parentId) {
+        throw new BadRequestException('Parent ID is required');
+      }
+
+      const docs = await this.entityModel.find({
+        createdBy: toObjectId(userId),
+        $expr: {
+          $eq: [{ $arrayElemAt: ["$parents", -1] }, toObjectId(parentId)]
+        }
+      }).populate('createdBy', 'firstName lastName email picture').populate('lastViewedBy', 'firstName lastName email picture');
+      return docs;
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      console.error('Error finding direct children for user:', error);
+      throw new Error('Could not find children');
+    }
+  }
+
+  // Calculate total storage used by a user
+  async calculateUserStorage(userId: string): Promise<number> {
+    try {
+      const result = await this.entityModel.aggregate([
+        { $match: { createdBy: toObjectId(userId), isFolder: false } },
+        { $group: { _id: null, totalSize: { $sum: '$fileSize' } } },
+      ]);
+      return result.length > 0 ? result[0].totalSize : 0;
+    } catch (error) {
+      console.error('Error calculating user storage:', error);
+      return 0;
     }
   }
 

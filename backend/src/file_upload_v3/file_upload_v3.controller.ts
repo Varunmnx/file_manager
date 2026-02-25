@@ -9,6 +9,7 @@ import {
   UploadedFile,
   UseInterceptors,
   BadRequestException,
+  NotFoundException,
   Query,
   Put,
   UseGuards,
@@ -16,7 +17,6 @@ import {
   Res
 } from '@nestjs/common';
 import { Response } from 'express';
-import { join } from 'path';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UploadPoolService } from './services/file_upload_v3.service';
 import { InitiateUploadDto, UploadChunkDto, CompleteUploadDto } from './dto/upload.dto';
@@ -25,18 +25,23 @@ import { FileSizeValidationPipe } from './validation';
 import { CreateFolderDto } from './dto/create-folder.dto';
 import { CreateFileDto } from './dto/create-file.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { R2StorageService } from '../r2-storage/r2-storage.service';
 
 // @UseGuards(JwtAuthGuard)
 @Controller('upload')
 export class UploadController {
-  constructor(private readonly uploadPoolService: UploadPoolService) { }
+  constructor(
+    private readonly uploadPoolService: UploadPoolService,
+    private readonly r2StorageService: R2StorageService,
+  ) { }
 
   @Get("all")
   @UseGuards(JwtAuthGuard)
-  async getAll(@Query("folderId") folderId: string) {
-    if (folderId) return await this.uploadPoolService.getAllUploadsUnderFolder(folderId)
-    const allSessions = await this.uploadPoolService.getAllUploads();
-    return allSessions
+  async getAll(@Query("folderId") folderId: string, @Request() req) {
+    const userId = req.user?._id?.toString();
+    if (folderId) return await this.uploadPoolService.getAllUploadsUnderFolderForUser(folderId, userId);
+    const allSessions = await this.uploadPoolService.getAllUploadsForUser(userId);
+    return allSessions;
   }
 
   @Post('initiate')
@@ -66,6 +71,30 @@ export class UploadController {
     const createdBy = req.user?._id?.toString();
     const uploadId = await this.uploadPoolService.createEmptyFile(dto.fileName, dto.parent, createdBy);
     return { uploadId };
+  }
+
+  // ── Direct R2 Upload ──────────────────────────
+
+  @Post('direct-upload')
+  @UseGuards(JwtAuthGuard)
+  async initiateDirectUpload(
+    @Body() body: { fileName: string; fileSize: number; contentType: string; parentId?: string },
+    @Request() req,
+  ) {
+    const createdBy = req.user?._id?.toString();
+    return await this.uploadPoolService.initiateDirectUpload(
+      body.fileName,
+      body.fileSize,
+      body.contentType,
+      body.parentId,
+      createdBy,
+    );
+  }
+
+  @Post('direct-upload/confirm/:uploadId')
+  @UseGuards(JwtAuthGuard)
+  async confirmDirectUpload(@Param('uploadId') uploadId: string) {
+    return await this.uploadPoolService.confirmDirectUpload(uploadId);
   }
 
   @Post('chunk')
@@ -146,12 +175,26 @@ export class UploadController {
 
   @Get('thumbnails/:uploadId')
   async getThumbnail(@Param('uploadId') uploadId: string, @Res() res: Response) {
-    const filePath = join(process.cwd(), 'uploads', 'thumbnails', `${uploadId}.png`);
-    const fs = require('fs');
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).send('Not found');
+    try {
+      const thumbnailKey = this.r2StorageService.buildThumbnailKey(uploadId);
+      const exists = await this.r2StorageService.fileExists(thumbnailKey);
+
+      if (!exists) {
+        return res.status(404).send('Not found');
+      }
+
+      const { stream, contentType } = await this.r2StorageService.downloadFileStream(thumbnailKey);
+
+      res.set({
+        'Content-Type': contentType || 'image/png',
+        'Cache-Control': 'public, max-age=31536000',
+      });
+
+      stream.pipe(res);
+    } catch (error) {
+      console.error('Error serving thumbnail:', error);
+      return res.status(500).send('Error serving thumbnail');
     }
-    res.sendFile(filePath);
   }
 
   @Put('move/:uploadId')
@@ -162,7 +205,7 @@ export class UploadController {
   }
 
   /**
-   * Serve media files (images/videos) for inline preview
+   * Serve media files (images/videos) for inline preview from R2
    */
   @Get('media/:uploadId')
   @UseGuards(JwtAuthGuard)
@@ -173,10 +216,14 @@ export class UploadController {
         return res.status(404).send('File not found');
       }
 
-      const filePath = join(process.cwd(), 'uploads', file.fileName);
-      const fs = require('fs');
-      if (!fs.existsSync(filePath)) {
-        return res.status(404).send('File not found on disk');
+      const r2Key = file.r2Key;
+      if (!r2Key) {
+        return res.status(404).send('File not found in storage');
+      }
+
+      const exists = await this.r2StorageService.fileExists(r2Key);
+      if (!exists) {
+        return res.status(404).send('File not found in R2');
       }
 
       const fileName = file.fileName.split('/').pop() || file.fileName;
@@ -200,7 +247,7 @@ export class UploadController {
         mov: 'video/quicktime',
         avi: 'video/x-msvideo',
         mkv: 'video/x-matroska',
-        // Audio (bonus)
+        // Audio
         mp3: 'audio/mpeg',
         wav: 'audio/wav',
         flac: 'audio/flac',
@@ -209,17 +256,78 @@ export class UploadController {
 
       const contentType = mimeTypes[ext] || 'application/octet-stream';
 
+      const { stream } = await this.r2StorageService.downloadFileStream(r2Key);
+
       res.set({
         'Content-Type': contentType,
         'Cache-Control': 'public, max-age=31536000',
       });
 
-      res.sendFile(filePath);
+      stream.pipe(res);
     } catch (error) {
       console.error('Error serving media:', error);
       return res.status(500).send('Error serving media');
     }
   }
 
-}
+  /**
+   * Get a presigned R2 URL for direct preview in the browser.
+   * Returns a time-limited signed URL (15 min) so the client can load media directly.
+   */
+  @Get('preview-url/:uploadId')
+  @UseGuards(JwtAuthGuard)
+  async getPreviewUrl(@Param('uploadId') uploadId: string, @Query('expiry') expiry?: string) {
+    const file = await this.uploadPoolService.getUploadStatus(uploadId);
+    if (!file) {
+      throw new NotFoundException('File not found');
+    }
 
+    const r2Key = file.r2Key;
+    if (!r2Key) {
+      throw new NotFoundException('File not found in storage');
+    }
+
+    const exists = await this.r2StorageService.fileExists(r2Key);
+    if (!exists) {
+      throw new NotFoundException('File not found in R2');
+    }
+
+    // Default 15 minutes, max 1 hour
+    let expiresInSeconds = 900;
+    if (expiry) {
+      const parsed = parseInt(expiry, 10);
+      if (!isNaN(parsed) && parsed > 0 && parsed <= 3600) {
+        expiresInSeconds = parsed;
+      }
+    }
+
+    const presignedUrl = await this.r2StorageService.getPresignedDownloadUrl(r2Key, expiresInSeconds);
+
+    const fileName = file.fileName?.split('/').pop() || file.fileName;
+    const ext = fileName.split('.').pop()?.toLowerCase() || '';
+
+    // Determine content type from extension
+    const mimeTypes: Record<string, string> = {
+      // Images
+      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+      gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
+      bmp: 'image/bmp', ico: 'image/x-icon',
+      // Videos
+      mp4: 'video/mp4', webm: 'video/webm', ogg: 'video/ogg',
+      mov: 'video/quicktime', avi: 'video/x-msvideo', mkv: 'video/x-matroska',
+      // Audio
+      mp3: 'audio/mpeg', wav: 'audio/wav', flac: 'audio/flac', m4a: 'audio/mp4',
+      // Documents
+      pdf: 'application/pdf',
+    };
+
+    return {
+      url: presignedUrl,
+      fileName,
+      fileSize: file.fileSize,
+      contentType: mimeTypes[ext] || 'application/octet-stream',
+      expiresInSeconds,
+    };
+  }
+
+}

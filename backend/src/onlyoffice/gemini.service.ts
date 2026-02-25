@@ -18,7 +18,7 @@ export class GeminiService {
       this.model = null;
     } else {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
-      this.initializeModel();
+      // this.initializeModel();
     }
   }
 
@@ -27,9 +27,7 @@ export class GeminiService {
       // First, list all available models
       this.logger.log('Fetching available models from Google AI...');
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models?key=${this.apiKey}`
-      );
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${this.apiKey}`);
 
       if (!response.ok) {
         const error = await response.text();
@@ -50,9 +48,7 @@ export class GeminiService {
       }
 
       // Find models that support generateContent
-      const supportedModels = data.models.filter((m: any) =>
-        m.supportedGenerationMethods?.includes('generateContent')
-      );
+      const supportedModels = data.models.filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'));
 
       supportedModels.forEach((m: any) => {
         const modelName = m.name.replace('models/', '');
@@ -88,7 +84,6 @@ export class GeminiService {
       testResult?.response.text();
 
       this.logger.log(`✅ Successfully initialized with: ${modelName}`);
-
     } catch (error) {
       this.logger.error('Error during model initialization:', error);
       this.model = null;
@@ -163,7 +158,7 @@ Summary:`;
 
     if (timeSinceLastCall < this.MIN_INTERVAL_MS) {
       const waitTime = this.MIN_INTERVAL_MS - timeSinceLastCall;
-      await new Promise(resolve => setTimeout(resolve, waitTime));
+      await new Promise((resolve) => setTimeout(resolve, waitTime));
     }
 
     this.lastCallTime = Date.now();
@@ -179,7 +174,6 @@ Summary:`;
 
       this.logger.debug(`Generated ${type}`);
       return text.trim();
-
     } catch (error) {
       this.logger.error(`Error generating ${type}:`, error.message);
       return '';

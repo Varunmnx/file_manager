@@ -2,8 +2,7 @@ import { Controller, Get, Post, Param, Res, Body, StreamableFile, HttpStatus, Us
 import { Response, Request } from 'express';
 import { FileFolderRepository } from '../file_upload_v3/repositories/file-folder.repository';
 import { FileRevisionRepository } from './repositories/file-revision.repository';
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, statSync } from 'fs';
-import { join, extname } from 'path';
+import { extname } from 'path';
 import { Types } from 'mongoose';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UsersService } from '../auth/service/auth.service';
@@ -16,6 +15,7 @@ import * as mammoth from 'mammoth';
 import { extractText } from 'unpdf';
 import * as XLSX from 'xlsx';
 import { FileRevisionEntity, FileRevisionDocument } from './entities/file-revision.entity';
+import { R2StorageService } from '../r2-storage/r2-storage.service';
 
 // Interface for the authenticated user in the request
 interface AuthenticatedRequest extends Request {
@@ -28,8 +28,6 @@ interface AuthenticatedRequest extends Request {
 @Controller('onlyoffice')
 export class OnlyOfficeController {
   private readonly logger = new Logger(OnlyOfficeController.name);
-  private readonly uploadDir = join(process.cwd(), 'uploads');
-  private readonly revisionsDir = join(process.cwd(), 'uploads', 'revisions');
 
   constructor(
     private readonly fileFolderRepository: FileFolderRepository,
@@ -37,12 +35,8 @@ export class OnlyOfficeController {
     private readonly usersService: UsersService,
     private readonly onlyOfficeService: OnlyOfficeService,
     private readonly geminiService: GeminiService,
-  ) {
-    // Ensure revisions directory exists
-    if (!existsSync(this.revisionsDir)) {
-      mkdirSync(this.revisionsDir, { recursive: true });
-    }
-  }
+    private readonly r2StorageService: R2StorageService,
+  ) { }
 
   // Serve file for OnlyOffice to download (Protected by DownloadAuthGuard)
   @UseGuards(DownloadAuthGuard)
@@ -58,14 +52,19 @@ export class OnlyOfficeController {
         return res.status(404).json({ error: 'File not found' });
       }
 
-      const filePath = join(this.uploadDir, file.fileName);
-
-      if (!existsSync(filePath)) {
-        this.logger.error(`[OnlyOffice] File not found on disk: ${filePath}`);
-        return res.status(404).json({ error: 'File not found on disk' });
+      const r2Key = file.r2Key;
+      if (!r2Key) {
+        this.logger.error(`[OnlyOffice] No R2 key found for file: ${fileId}`);
+        return res.status(404).json({ error: 'File not found in storage' });
       }
 
-      const fileContents = readFileSync(filePath);
+      const exists = await this.r2StorageService.fileExists(r2Key);
+      if (!exists) {
+        this.logger.error(`[OnlyOffice] File not found in R2: ${r2Key}`);
+        return res.status(404).json({ error: 'File not found in storage' });
+      }
+
+      const fileContents = await this.r2StorageService.downloadFile(r2Key);
       const fileName = file.fileName.split('/').pop() || file.fileName;
       const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
 
@@ -117,12 +116,13 @@ export class OnlyOfficeController {
         return res.status(404).json({ error: 'Revision not found' });
       }
 
-      const filePath = join(this.revisionsDir, revision.revisionFileName);
-      if (!existsSync(filePath)) {
-        return res.status(404).json({ error: 'Revision file not found on disk' });
+      const revisionKey = this.r2StorageService.buildRevisionKey(revision.revisionFileName);
+      const exists = await this.r2StorageService.fileExists(revisionKey);
+      if (!exists) {
+        return res.status(404).json({ error: 'Revision file not found in storage' });
       }
 
-      const fileContents = readFileSync(filePath);
+      const fileContents = await this.r2StorageService.downloadFile(revisionKey);
       const fileName = revision.revisionFileName;
       const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
 
@@ -177,8 +177,7 @@ export class OnlyOfficeController {
       try {
         this.logger.log(`[OnlyOffice] Downloading from: ${body.url}`);
 
-        // Note: OnlyOffice often does NOT sign the internal download URL
-        // So we just fetch it directly from the container
+        // Fetch the new file content from OnlyOffice
         const response = await fetch(body.url);
 
         if (!response.ok) {
@@ -187,41 +186,37 @@ export class OnlyOfficeController {
         }
 
         const buffer = Buffer.from(await response.arrayBuffer());
-        const currentFilePath = join(this.uploadDir, file.fileName);
-
-        // Get the current version of the file (default to 1 if not set)
         const currentVersion = file.version || 1;
+        const r2Key = file.r2Key;
 
         // Create revision of the current file before overwriting
-        if (existsSync(currentFilePath)) {
+        if (r2Key && await this.r2StorageService.fileExists(r2Key)) {
           const ext = extname(file.fileName);
           const revisionFileName = `${fileId}_v${currentVersion}${ext}`;
-
-          // Ensure revisions directory exists just in case
-          if (!existsSync(this.revisionsDir)) {
-            mkdirSync(this.revisionsDir, { recursive: true });
-          }
-
-          const revisionPath = join(this.revisionsDir, revisionFileName);
+          const revisionKey = this.r2StorageService.buildRevisionKey(revisionFileName);
 
           try {
-            copyFileSync(currentFilePath, revisionPath);
-            this.logger.log(`[OnlyOffice] Created revision file: ${revisionFileName}`);
+            // Copy current file to revision in R2
+            await this.r2StorageService.copyFile(r2Key, revisionKey);
+            this.logger.log(`[OnlyOffice] Created revision in R2: ${revisionFileName}`);
           } catch (copyError) {
             this.logger.error(`[OnlyOffice] Failed to copy revision file: ${copyError.message}`);
-            // If we can't create a revision, we should probably stop or at least not create the DB record
             throw copyError;
           }
 
           const userName = body.users?.[0] || 'Unknown User';
           const userId = body.actions?.[0]?.userid || 'unknown';
 
+          // Get file size from R2 metadata
+          const metadata = await this.r2StorageService.getFileMetadata(revisionKey);
+          const revisionSize = metadata?.size || 0;
+
           // Save revision record immediately (Async AI will update it later)
           const revisionBuilder = FileRevisionEntity.builder()
             .setFileId(new Types.ObjectId(fileId))
             .setVersion(currentVersion)
             .setRevisionFileName(revisionFileName)
-            .setFileSize(statSync(revisionPath).size)
+            .setFileSize(revisionSize)
             .setSavedBy(userName)
             .setCreatedAt(new Date())
             .setAiChangeSummary('Analysis pending...');
@@ -234,15 +229,25 @@ export class OnlyOfficeController {
 
           const revision = await this.fileRevisionRepository.create(revisionBuilder.build());
 
+          // Download old content from R2 for AI analysis
+          let oldBuffer: Buffer | null = null;
+          try {
+            oldBuffer = await this.r2StorageService.downloadFile(revisionKey);
+          } catch (e) {
+            this.logger.warn(`[OnlyOffice] Could not download revision for AI analysis: ${e.message}`);
+          }
+
           // Trigger background analysis (Fire & Forget)
-          this.handleAsyncAIAnalysis(revision, revisionPath, buffer, ext, file.fileName).catch(e =>
-            this.logger.error('Background AI task failed', e)
-          );
+          if (oldBuffer) {
+            this.handleAsyncAIAnalysis(revision, oldBuffer, buffer, extname(file.fileName).toLowerCase(), file.fileName).catch(e =>
+              this.logger.error('Background AI task failed', e)
+            );
+          }
         }
 
-        // Save the new version
-        writeFileSync(currentFilePath, buffer);
-        this.logger.log(`[OnlyOffice] Saved new file content to: ${currentFilePath}`);
+        // Upload the new version to R2 (overwrite)
+        await this.r2StorageService.uploadFile(r2Key, buffer);
+        this.logger.log(`[OnlyOffice] Saved new file content to R2: ${r2Key}`);
 
         // Increment file version
         const newVersion = currentVersion + 1;
@@ -340,14 +345,15 @@ export class OnlyOfficeController {
 
       let fileContent = '';
       const revisionFileName = revision.revisionFileName;
-      const revisionPath = join(this.revisionsDir, revisionFileName);
+      const revisionKey = this.r2StorageService.buildRevisionKey(revisionFileName);
 
-      if (!existsSync(revisionPath)) {
-        return { message: 'Revision file not found on disk', summary: null };
+      const exists = await this.r2StorageService.fileExists(revisionKey);
+      if (!exists) {
+        return { message: 'Revision file not found in storage', summary: null };
       }
 
+      const buffer = await this.r2StorageService.downloadFile(revisionKey);
       const ext = extname(revisionFileName).toLowerCase();
-      const buffer = readFileSync(revisionPath);
 
       // Extract text
       if (ext === '.docx') {
@@ -547,15 +553,16 @@ export class OnlyOfficeController {
     };
   }
 
-  private async handleAsyncAIAnalysis(revision: FileRevisionDocument, revisionPath: string, newBuffer: Buffer, ext: string, fileName: string) {
+  /**
+   * Background AI analysis — receives buffers directly instead of file paths
+   */
+  private async handleAsyncAIAnalysis(revision: FileRevisionDocument, oldBuffer: Buffer, newBuffer: Buffer, ext: string, fileName: string) {
     this.logger.log(`Starting background AI analysis for ${fileName}`);
     try {
       let aiChangeSummary = '';
 
       if (ext === '.docx') {
         try {
-          const oldBuffer = readFileSync(revisionPath);
-
           const oldResult = await mammoth.extractRawText({ buffer: oldBuffer });
           const newResult = await mammoth.extractRawText({ buffer: newBuffer });
 
@@ -575,7 +582,6 @@ export class OnlyOfficeController {
 
       else if (ext === '.pdf') {
         try {
-          const oldBuffer = readFileSync(revisionPath);
           const oldUint8Array = new Uint8Array(oldBuffer);
           const newUint8Array = new Uint8Array(newBuffer);
           const oldText = await extractText(oldUint8Array);
@@ -603,7 +609,7 @@ export class OnlyOfficeController {
             return text;
           };
 
-          const oldText = extractSheetText(readFileSync(revisionPath));
+          const oldText = extractSheetText(oldBuffer);
           const newText = extractSheetText(newBuffer);
 
           if (oldText !== newText) {
@@ -617,7 +623,7 @@ export class OnlyOfficeController {
         }
       } else if (['.txt', '.md'].includes(ext)) {
         try {
-          const oldText = readFileSync(revisionPath, 'utf-8');
+          const oldText = oldBuffer.toString('utf-8');
           const newText = newBuffer.toString('utf-8');
 
           if (oldText !== newText) {

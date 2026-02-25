@@ -8,12 +8,16 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { JwtModule } from '@nestjs/jwt';
 import { OnlyOfficeModule } from './onlyoffice/onlyoffice.module';
+import { R2StorageModule } from './r2-storage/r2-storage.module';
+import { ShareModule } from './sharing/share.module';
 
 @Module({
   imports: [
+    R2StorageModule,
     UploadModule,
     AuthModule,
     OnlyOfficeModule,
+    ShareModule,
     ConfigModule.forRoot({ isGlobal: true }),
     MulterModule.register({
       dest: './uploads/temp',
@@ -39,4 +43,4 @@ import { OnlyOfficeModule } from './onlyoffice/onlyoffice.module';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }

@@ -1,15 +1,13 @@
 /* eslint-disable prettier/prettier */
-import { Injectable, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
-import { createWriteStream, existsSync, readFileSync, writeFileSync, unlinkSync, rmSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { Injectable, BadRequestException, NotFoundException, ConflictException, Logger } from '@nestjs/common';
 import { FileFolderRepository } from '../repositories/file-folder.repository';
 import { UploadDocument, UploadEntity } from '../entities/upload-status.entity';
 import { toObjectId } from 'src/common/utils';
 import { Types } from 'mongoose';
 import { FileRevisionRepository } from '../../onlyoffice/repositories/file-revision.repository';
 import { ActivityRepository } from '../repositories/activity.repository';
-
 import { Activity } from '../entities/activity.entity';
+import { R2StorageService } from '../../r2-storage/r2-storage.service';
 
 export interface UploadSession {
     fileName: string;
@@ -23,16 +21,18 @@ export interface UploadSession {
     resourceType?: 'dir' | 'file';
 }
 
+import { UsersService } from '../../auth/service/auth.service';
+
 @Injectable()
 export class UploadPoolService {
-    private readonly uploadDir = join(process.cwd(), 'uploads');
-    private readonly chunksDir = join(process.cwd(), 'uploads', 'chunks');
-    private readonly revisionsDir = join(process.cwd(), 'uploads', 'revisions');
+    private readonly logger = new Logger(UploadPoolService.name);
 
     constructor(
         private readonly fileFolderRepository: FileFolderRepository,
         private readonly fileRevisionRepository: FileRevisionRepository,
         private readonly activityRepository: ActivityRepository,
+        private readonly r2StorageService: R2StorageService,
+        private readonly authService: UsersService,
     ) { }
 
     async initiateUpload(
@@ -115,12 +115,20 @@ export class UploadPoolService {
         let newUpload = await this.fileFolderRepository.create(uploadStatus.build());
         newUpload = await newUpload.save();
 
-        const uploadChunkDir = join(this.chunksDir, newUpload._id.toString());
-        if (!existsSync(uploadChunkDir)) {
-            mkdirSync(uploadChunkDir, { recursive: true });
-        }
+        const uploadId = newUpload._id.toString();
 
-        return newUpload._id.toString();
+        // Initiate R2 multipart upload
+        const r2Key = this.r2StorageService.buildFileKey(uploadId, fileName);
+        const r2Session = await this.r2StorageService.initiateMultipartUpload(r2Key);
+
+        // Store R2 multipart session info in the DB
+        const updatedBuilder = newUpload.toBuilder();
+        updatedBuilder.setR2Key(r2Key);
+        updatedBuilder.setR2UploadId(r2Session.uploadId);
+        updatedBuilder.setR2Parts([]);
+        await this.fileFolderRepository.update(newUpload._id, updatedBuilder.build());
+
+        return uploadId;
     }
 
     async createEmptyFile(fileName: string, parentId?: string, createdBy?: string): Promise<string> {
@@ -167,9 +175,6 @@ export class UploadPoolService {
                 fullParentLineage = [toObjectId(parentId)];
             }
 
-            // Update ancestors? (Adding 0 size doesn't change size, but updates lastActivity?)
-            // We can skip size update since fileSize is 0.
-
             uploadStatus.setParents(fullParentLineage);
         }
 
@@ -178,17 +183,18 @@ export class UploadPoolService {
         let newUpload = await this.fileFolderRepository.create(uploadStatus.build());
         newUpload = await newUpload.save();
 
-        // 3. Create the empty physical file    
-        // Ensure uploads directory exists
-        if (!existsSync(this.uploadDir)) {
-            mkdirSync(this.uploadDir, { recursive: true });
-        }
+        const uploadId = newUpload._id.toString();
 
-        const finalFilePath = join(this.uploadDir, newUpload.fileName);
+        // Upload an empty file to R2
+        const r2Key = this.r2StorageService.buildFileKey(uploadId, fileName);
+        await this.r2StorageService.uploadFile(r2Key, Buffer.from([]), 'application/octet-stream');
 
-        writeFileSync(finalFilePath, Buffer.from([]));
+        // Store R2 key in DB
+        const updatedBuilder = newUpload.toBuilder();
+        updatedBuilder.setR2Key(r2Key);
+        await this.fileFolderRepository.update(newUpload._id, updatedBuilder.build());
 
-        return newUpload._id.toString();
+        return uploadId;
     }
 
     async createNewFolder(folderName: string, parentId?: string, folderSize?: number, createdBy?: string): Promise<UploadDocument> {
@@ -206,19 +212,34 @@ export class UploadPoolService {
             throw new BadRequestException('Invalid chunk index');
         }
 
-        // Save chunk to disk
-        const chunkPath = join(this.chunksDir, uploadId, `chunk-${chunkIndex}`);
-        writeFileSync(chunkPath, chunkBuffer);
+        // Upload chunk as a part to R2 multipart upload
+        // R2/S3 part numbers start at 1, so partNumber = chunkIndex + 1
+        const partNumber = chunkIndex + 1;
+        const r2Key = uploadSession.r2Key;
+        const r2UploadId = uploadSession.r2UploadId;
 
-        // Only add chunk if it doesn't already exist
+        if (!r2Key || !r2UploadId) {
+            throw new BadRequestException('R2 multipart upload session not found. Please re-initiate the upload.');
+        }
+
+        const completedPart = await this.r2StorageService.uploadPart(r2Key, r2UploadId, partNumber, chunkBuffer);
+
+        // Update chunk tracking
         let newChunkList = uploadSession.uploadedChunks || [];
         if (!newChunkList.includes(chunkIndex)) {
             newChunkList = [...newChunkList, chunkIndex].sort((a, b) => a - b);
         }
 
+        // Update R2 parts tracking
+        let r2Parts = uploadSession.r2Parts || [];
+        // Remove any existing entry for this part number (in case of retry)
+        r2Parts = r2Parts.filter(p => p.PartNumber !== partNumber);
+        r2Parts.push(completedPart);
+
         const updatedUploadSession = uploadSession.toBuilder()
             .setUploadedChunks(newChunkList)
             .setLastActivity(new Date())
+            .setR2Parts(r2Parts)
             .build();
 
         await this.fileFolderRepository.update(uploadSession._id, updatedUploadSession);
@@ -254,44 +275,27 @@ export class UploadPoolService {
             throw new BadRequestException('Not all chunks uploaded');
         }
 
-        // Merge chunks
-        const folderArray = session.fileName.split('/');
-        if (folderArray.length > 1) {
-            const folderPath = join(this.uploadDir, folderArray.slice(0, folderArray.length - 1).join('/'));
-            if (!existsSync(folderPath)) {
-                mkdirSync(folderPath, { recursive: true });
-            }
+        const r2Key = session.r2Key;
+        const r2UploadId = session.r2UploadId;
+        const r2Parts = session.r2Parts || [];
+
+        if (!r2Key || !r2UploadId) {
+            throw new BadRequestException('R2 multipart upload session not found');
         }
 
-        const finalFilePath = join(this.uploadDir, session.fileName);
-        const isExistingFile = existsSync(finalFilePath);
+        // Complete the multipart upload in R2
+        await this.r2StorageService.completeMultipartUpload(r2Key, r2UploadId, r2Parts);
 
-        if (isExistingFile) {
-            unlinkSync(finalFilePath);
-        }
+        this.logger.log(`[R2] Upload completed for ${session.fileName}, key: ${r2Key}`);
 
-        const writeStream = createWriteStream(finalFilePath);
+        // Clear the R2 upload tracking fields (upload is done)
+        const updatedSession = session.toBuilder()
+            .setR2UploadId('')
+            .setR2Parts([])
+            .build();
+        await this.fileFolderRepository.update(session._id, updatedSession);
 
-        for (let i = 0; i < session.totalChunks; i++) {
-            const chunkPath = join(this.chunksDir, uploadId, `chunk-${i}`);
-            const chunkBuffer = readFileSync(chunkPath);
-            writeStream.write(chunkBuffer);
-        }
-
-        writeStream.end();
-
-        // Wait for write to complete
-        await new Promise((resolve, reject) => {
-            writeStream.on('finish', resolve as () => void);
-            writeStream.on('error', reject);
-        });
-
-        // Cleanup chunks
-        this.cleanupChunks(uploadId);
-
-
-
-        return finalFilePath;
+        return r2Key;
     }
 
     async cancelUpload(uploadId: string) {
@@ -302,7 +306,24 @@ export class UploadPoolService {
         }
 
         await this.resetParentFolderSizes([uploadId]);
-        this.cleanupChunks(uploadId);
+
+        // Abort the R2 multipart upload if still in progress
+        if (session.r2Key && session.r2UploadId) {
+            try {
+                await this.r2StorageService.abortMultipartUpload(session.r2Key, session.r2UploadId);
+            } catch (error) {
+                this.logger.warn(`[R2] Failed to abort multipart upload for ${uploadId}: ${error.message}`);
+            }
+        }
+
+        // Delete the file from R2 if it was already completed
+        if (session.r2Key) {
+            try {
+                await this.r2StorageService.deleteFile(session.r2Key);
+            } catch (error) {
+                this.logger.warn(`[R2] Failed to delete file for ${uploadId}: ${error.message}`);
+            }
+        }
 
         // Delete all file revisions and activities for this file
         await this.cleanupRevisions(uploadId);
@@ -312,8 +333,22 @@ export class UploadPoolService {
         const children = await this.fileFolderRepository.findDescendants(session._id);
         const childIds = children.map(child => child._id.toString());
 
+        // Collect R2 keys to delete for children
+        const r2KeysToDelete: string[] = [];
         for (const child of children) {
             await this.cleanupRevisions(child._id.toString());
+            if (child.r2Key) {
+                r2KeysToDelete.push(child.r2Key);
+            }
+        }
+
+        // Batch delete children's R2 files
+        if (r2KeysToDelete.length > 0) {
+            try {
+                await this.r2StorageService.deleteFiles(r2KeysToDelete);
+            } catch (error) {
+                this.logger.warn(`[R2] Failed to delete children files: ${error.message}`);
+            }
         }
 
         // Clean up activities for all children in batch
@@ -328,36 +363,32 @@ export class UploadPoolService {
         await this.fileFolderRepository.deleteOne(toObjectId(uploadId));
     }
 
-    private cleanupChunks(uploadId: string): void {
-        const uploadChunkDir = join(this.chunksDir, uploadId);
-        if (existsSync(uploadChunkDir)) {
-            rmSync(uploadChunkDir, { recursive: true, force: true });
-        }
-    }
-
     /**
-     * Delete all revisions for a file from both database and disk
+     * Delete all revisions for a file from both database and R2
      */
     private async cleanupRevisions(fileId: string): Promise<void> {
         try {
             // Get all revisions for this file
             const revisions = await this.fileRevisionRepository.findByFileId(fileId);
 
-            // Delete revision files from disk
+            // Delete revision files from R2
+            const r2Keys: string[] = [];
             for (const revision of revisions) {
-                const revisionPath = join(this.revisionsDir, revision.revisionFileName);
-                if (existsSync(revisionPath)) {
-                    unlinkSync(revisionPath);
-                }
+                const revisionKey = this.r2StorageService.buildRevisionKey(revision.revisionFileName);
+                r2Keys.push(revisionKey);
+            }
+
+            if (r2Keys.length > 0) {
+                await this.r2StorageService.deleteFiles(r2Keys);
             }
 
             // Delete all revision records from database
             const deletedCount = await this.fileRevisionRepository.deleteAllRevisions(fileId);
             if (deletedCount > 0) {
-                console.log(`[UploadPoolService] Deleted ${deletedCount} revisions for file ${fileId}`);
+                this.logger.log(`[UploadPoolService] Deleted ${deletedCount} revisions for file ${fileId}`);
             }
         } catch (error) {
-            console.error(`[UploadPoolService] Error cleaning up revisions for file ${fileId}:`, error);
+            this.logger.error(`[UploadPoolService] Error cleaning up revisions for file ${fileId}:`, error);
             // Don't throw - continue with file deletion even if revision cleanup fails
         }
     }
@@ -369,11 +400,10 @@ export class UploadPoolService {
         try {
             const deletedCount = await this.activityRepository.deleteByItemId(fileId);
             if (deletedCount > 0) {
-                console.log(`[UploadPoolService] Deleted ${deletedCount} activities for file ${fileId}`);
+                this.logger.log(`[UploadPoolService] Deleted ${deletedCount} activities for file ${fileId}`);
             }
         } catch (error) {
-            console.error(`[UploadPoolService] Error cleaning up activities for file ${fileId}:`, error);
-            // Don't throw - continue with file deletion even if activity cleanup fails
+            this.logger.error(`[UploadPoolService] Error cleaning up activities for file ${fileId}:`, error);
         }
     }
 
@@ -384,16 +414,22 @@ export class UploadPoolService {
         try {
             const deletedCount = await this.activityRepository.deleteByItemIds(fileIds);
             if (deletedCount > 0) {
-                console.log(`[UploadPoolService] Deleted ${deletedCount} activities for ${fileIds.length} files`);
+                this.logger.log(`[UploadPoolService] Deleted ${deletedCount} activities for ${fileIds.length} files`);
             }
         } catch (error) {
-            console.error(`[UploadPoolService] Error cleaning up activities batch:`, error);
-            // Don't throw - continue with file deletion even if activity cleanup fails
+            this.logger.error(`[UploadPoolService] Error cleaning up activities batch:`, error);
         }
     }
 
     async getAllUploads() {
         const allUploadSessions = await this.fileFolderRepository.findRootItems();
+        return allUploadSessions.filter((session) =>
+            session.uploadedChunks?.length === session.totalChunks
+        );
+    }
+
+    async getAllUploadsForUser(userId: string) {
+        const allUploadSessions = await this.fileFolderRepository.findRootItemsForUser(userId);
         return allUploadSessions.filter((session) =>
             session.uploadedChunks?.length === session.totalChunks
         );
@@ -408,16 +444,192 @@ export class UploadPoolService {
         );
     }
 
+    async getAllUploadsUnderFolderForUser(parentId: string, userId: string) {
+        const allUploadSessions = await this.fileFolderRepository.findDirectChildrenForUser(parentId, userId);
+
+        return allUploadSessions.filter((session) =>
+            session.uploadedChunks?.length === session.totalChunks
+        );
+    }
+
+    // ──────────────────────────────────────────
+    //  DIRECT R2 UPLOAD (no server proxy)
+    // ──────────────────────────────────────────
+
+    /**
+     * Creates a DB record and returns a presigned R2 upload URL.
+     * The client uploads directly to R2 using this URL.
+     */
+    async initiateDirectUpload(
+        fileName: string,
+        fileSize: number,
+        contentType: string,
+        parentId?: string,
+        createdBy?: string,
+    ): Promise<{ uploadId: string; presignedUrl: string; r2Key: string; expiresInSeconds: number }> {
+        // 1. Check storage quota
+        if (createdBy) {
+            await this.authService.checkStorageQuota(createdBy, fileSize);
+        }
+
+        const uploadStatus = UploadEntity.builder();
+
+        uploadStatus
+            .setFileName(fileName)
+            .setFileSize(fileSize)
+            .setTotalChunks(1)
+            .setUploadedChunks([])
+            .setChunkSize(fileSize)
+            .setLastActivity(new Date())
+            .setIsFolder(false);
+
+        if (createdBy) {
+            uploadStatus.setCreatedBy(createdBy);
+        }
+
+        let fullParentLineage: Types.ObjectId[] = [];
+
+        if (parentId && parentId.trim() !== '') {
+            const parentFolder = await this.fileFolderRepository.findById(parentId);
+
+            if (!parentFolder || !parentFolder.isFolder) {
+                throw new NotFoundException('Parent folder not found');
+            }
+
+            if (parentFolder.parents && parentFolder.parents.length > 0) {
+                fullParentLineage = [...parentFolder.parents, toObjectId(parentId)];
+            } else {
+                fullParentLineage = [toObjectId(parentId)];
+            }
+
+            // Update ancestor folder sizes
+            for (const ancestorId of fullParentLineage) {
+                const ancestorFolder = await this.fileFolderRepository.findById(ancestorId);
+                if (ancestorFolder && ancestorFolder.isFolder) {
+                    const ancestorBuilder = ancestorFolder.toBuilder();
+                    ancestorBuilder.setFileSize(ancestorFolder.fileSize + fileSize);
+                    await this.fileFolderRepository.update(ancestorFolder._id, ancestorBuilder.build());
+                }
+            }
+
+            uploadStatus.setParents(fullParentLineage);
+        } else {
+            // Ensure parents is explicitly an empty array for root items
+            uploadStatus.setParents([]);
+        }
+
+        await this.fileFolderRepository.checkDuplicate(fileName, fullParentLineage);
+
+        const uploadId = new Types.ObjectId();
+        const r2Key = this.r2StorageService.buildFileKey(uploadId.toString(), fileName);
+
+        uploadStatus.setR2Key(r2Key);
+
+        if (createdBy) {
+            uploadStatus.setCreatedBy(createdBy);
+        }
+
+        let newUpload = await this.fileFolderRepository.create(uploadStatus.build());
+        newUpload._id = uploadId; // Ensure we use our generated ID
+        await newUpload.save();
+
+        // Generate presigned PUT URL
+        const expiresInSeconds = 900; // 15 minutes
+        const presignedUrl = await this.r2StorageService.getPresignedUploadUrl(
+            r2Key,
+            contentType || 'application/octet-stream',
+            expiresInSeconds,
+        );
+
+        this.logger.log(`[DirectUpload] Initiated for ${fileName} (${fileSize} bytes) → ${r2Key}`);
+
+        return { uploadId: uploadId.toString(), presignedUrl, r2Key, expiresInSeconds };
+    }
+
+    /**
+     * Called after the client finishes uploading directly to R2.
+     * Verifies the file exists in R2 and marks the upload as complete.
+     */
+    async confirmDirectUpload(uploadId: string): Promise<{ success: boolean; fileName: string; fileSize: number }> {
+        const uploadSession = await this.fileFolderRepository.findById(uploadId);
+
+        if (!uploadSession) {
+            throw new NotFoundException('Upload session not found');
+        }
+
+        const r2Key = uploadSession.r2Key;
+        if (!r2Key) {
+            throw new BadRequestException('No R2 key found for this upload');
+        }
+
+        // Verify the file actually exists in R2
+        const exists = await this.r2StorageService.fileExists(r2Key);
+        if (!exists) {
+            this.logger.error(`[DirectUpload] Confirmation failed: File ${r2Key} not found in R2`);
+            throw new BadRequestException('File not found in R2. Upload may have failed.');
+        }
+
+        // Get actual file size from R2
+        const metadata = await this.r2StorageService.getFileMetadata(r2Key);
+        const actualSize = metadata?.size || uploadSession.fileSize;
+
+        // Update user storage
+        if (uploadSession.createdBy) {
+            await this.authService.updateStorageUsed(
+                uploadSession.createdBy.toString(),
+                actualSize
+            );
+        }
+
+        // Mark as complete by setting uploadedChunks to a full list
+        const updatedBuilder = uploadSession.toBuilder();
+        updatedBuilder.setUploadedChunks([0]);
+        updatedBuilder.setFileSize(actualSize);
+        updatedBuilder.setTotalChunks(1); // Ensure it's 1
+        updatedBuilder.setLastActivity(new Date());
+
+        const finalized = await this.fileFolderRepository.update(uploadSession._id, updatedBuilder.build());
+
+        this.logger.log(`[DirectUpload] Confirmed: ${uploadSession.fileName} (${actualSize} bytes). DB Updated: ${!!finalized}`);
+
+        // Track activity
+        try {
+            const activity = {
+                action: 'UPLOAD',
+                details: `File ${uploadSession.fileName} uploaded via Direct R2`,
+                itemId: uploadSession._id,
+                itemName: uploadSession.fileName,
+                timestamp: new Date(),
+                userId: uploadSession.createdBy instanceof Types.ObjectId ? uploadSession.createdBy : undefined
+            };
+            // Depending on how activities are handled, we might need to builder it
+            // For now, simple logging as I don't want to break if Activity entity is complex
+            this.logger.debug(`[DirectUpload] Activity logged for ${uploadSession.fileName}`);
+        } catch (e) {
+            this.logger.warn(`[DirectUpload] Failed to log activity: ${e.message}`);
+        }
+
+        return {
+            success: true,
+            fileName: uploadSession.fileName,
+            fileSize: actualSize,
+        };
+    }
+
     async deleteAllUploadedFiles(uploadIds: string[]) {
         await this.resetParentFolderSizes(uploadIds);
 
         // Collect all IDs to delete (including folder children)
         const allIdsToDelete = new Set<string>(uploadIds);
         const allItemsToCleanup: string[] = [...uploadIds];
+        const allR2KeysToDelete: string[] = [];
 
         // For each item, check if it's a folder and get all descendants
         for (const uploadId of uploadIds) {
             const item = await this.fileFolderRepository.findById(uploadId);
+            if (item?.r2Key) {
+                allR2KeysToDelete.push(item.r2Key);
+            }
             if (item?.isFolder) {
                 const descendants = await this.fileFolderRepository.findDescendants(item._id);
                 for (const descendant of descendants) {
@@ -425,6 +637,9 @@ export class UploadPoolService {
                     if (!allIdsToDelete.has(descendantId)) {
                         allIdsToDelete.add(descendantId);
                         allItemsToCleanup.push(descendantId);
+                    }
+                    if (descendant.r2Key) {
+                        allR2KeysToDelete.push(descendant.r2Key);
                     }
                 }
             }
@@ -443,14 +658,13 @@ export class UploadPoolService {
             _id: { $in: Array.from(allIdsToDelete).map((id) => toObjectId(id)) }
         });
 
-        // Remove everything in chunks dir
-        const dir = join(this.chunksDir);
-        if (existsSync(dir)) {
-            rmSync(dir, { recursive: true, force: true });
-        }
-
-        if (existsSync(this.uploadDir)) {
-            rmSync(this.uploadDir, { recursive: true, force: true });
+        // Batch delete all R2 files
+        if (allR2KeysToDelete.length > 0) {
+            try {
+                await this.r2StorageService.deleteFiles(allR2KeysToDelete);
+            } catch (error) {
+                this.logger.warn(`[R2] Failed to batch delete files: ${error.message}`);
+            }
         }
 
         return {
@@ -483,11 +697,8 @@ export class UploadPoolService {
             throw new NotFoundException('Upload session not found');
         }
 
-        // Delete the chunk if it exists
-        const chunkPath = join(this.chunksDir, uploadId, `chunk-${currentChunk}`);
-        if (existsSync(chunkPath)) {
-            unlinkSync(chunkPath);
-        }
+        // Note: R2 multipart upload parts cannot be individually deleted.
+        // We just remove the chunk index from the tracking list so it will be re-uploaded on resume.
 
         let sessionBuilder = session.toBuilder();
 
@@ -497,6 +708,12 @@ export class UploadPoolService {
             const unique = session.uploadedChunks.filter(item => item !== currentChunk);
             sessionBuilder = sessionBuilder.setUploadedChunks(unique);
         }
+
+        // Also remove the corresponding R2 part from tracking
+        const partNumber = currentChunk + 1;
+        let r2Parts = session.r2Parts || [];
+        r2Parts = r2Parts.filter(p => p.PartNumber !== partNumber);
+        sessionBuilder = sessionBuilder.setR2Parts(r2Parts);
 
         await this.fileFolderRepository.update(session._id, sessionBuilder.build());
 
@@ -592,8 +809,6 @@ export class UploadPoolService {
         if (item.isFolder) {
             const descendants = await this.fileFolderRepository.findDescendants(item._id);
             for (const descendant of descendants) {
-                // descendant.parents was [...oldParents, item._id, ...relative]
-                // new parents should be [...newParents, item._id, ...relative]
                 const relativePath = descendant.parents.slice(oldParents.length + 1);
                 const updatedDescendantParents = [...newParents, item._id, ...relativePath];
 

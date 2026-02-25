@@ -36,4 +36,8 @@ export class UserRepository extends EntityRepository<UserDocument> {
   async findById(id: string): Promise<UserDocument | null> {
     return this.findOne({ _id: id });
   }
+
+  async countAll(): Promise<number> {
+    return this.entityModel.countDocuments().exec();
+  }
 }

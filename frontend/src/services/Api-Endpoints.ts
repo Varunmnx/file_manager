@@ -16,5 +16,16 @@ export enum Slug {
   UPDATE_ACTIVITY = "/upload",
   THUMBNAILS = "/upload/thumbnails",
   MOVE_ITEM = "/upload/move",
-  HISTORY = "/upload"
+  HISTORY = "/upload",
+  // Sharing endpoints
+  SHARE_ITEM = "/shares",
+  SHARED_WITH_ME = "/shares/shared-with-me",
+  MY_SHARES = "/shares/my-shares",
+  // Storage endpoint
+  STORAGE_INFO = "/auth/storage",
+  // Direct R2 preview
+  PREVIEW_URL = "/upload/preview-url",
+  // Direct R2 upload
+  DIRECT_UPLOAD = "/upload/direct-upload",
+  DIRECT_UPLOAD_CONFIRM = "/upload/direct-upload/confirm",
 }

@@ -66,6 +66,19 @@ export class UploadEntity {
   @Prop({ type: String, required: false })
   public thumbnail: string;
 
+  @Prop({ type: String, required: false })
+  public r2Key: string;
+
+  @Prop({ type: String, required: false })
+  public r2UploadId: string;
+
+  @Prop({
+    type: [{ ETag: String, PartNumber: Number }],
+    default: [],
+    required: false,
+  })
+  public r2Parts: Array<{ ETag: string; PartNumber: number }>;
+
   @Prop({ type: 'number', name: 'version', default: 1 })
   public version = 1;
 
@@ -118,6 +131,9 @@ export class UploadEntity {
     builder.lastViewedAt = this.lastViewedAt;
     builder.thumbnail = this.thumbnail;
     builder.activities = this.activities;
+    builder.r2Key = this.r2Key;
+    builder.r2UploadId = this.r2UploadId;
+    builder.r2Parts = this.r2Parts;
 
     return builder;
   }
@@ -140,6 +156,9 @@ export class UploadEntity {
     lastViewedBy: User | Types.ObjectId;
     lastViewedAt: Date;
     thumbnail: string;
+    r2Key: string;
+    r2UploadId: string;
+    r2Parts: Array<{ ETag: string; PartNumber: number }>;
     activities: Array<{
       action: string;
       details: string;
@@ -201,6 +220,21 @@ export class UploadEntity {
       return this;
     }
 
+    public setR2Key(value: string) {
+      this.r2Key = value;
+      return this;
+    }
+
+    public setR2UploadId(value: string) {
+      this.r2UploadId = value;
+      return this;
+    }
+
+    public setR2Parts(value: Array<{ ETag: string; PartNumber: number }>) {
+      this.r2Parts = value;
+      return this;
+    }
+
     public setActivities(value: Array<{
       action: string;
       details: string;
@@ -251,6 +285,8 @@ export class UploadEntity {
       if (!this.createdAt) this.createdAt = new Date();
       if (!this._id) this._id = new Types.ObjectId();
       if (!this.uploadedChunks) this.uploadedChunks = [];
+      if (!this.parents) this.parents = [];
+      if (!this.children) this.children = [];
 
       this.lastActivity = new Date();
 
@@ -271,6 +307,9 @@ export class UploadEntity {
       e.lastViewedBy = this.lastViewedBy;
       e.lastViewedAt = this.lastViewedAt;
       e.thumbnail = this.thumbnail;
+      e.r2Key = this.r2Key;
+      e.r2UploadId = this.r2UploadId;
+      e.r2Parts = this.r2Parts;
       e.activities = this.activities;
 
       return e;

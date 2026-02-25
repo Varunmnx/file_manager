@@ -1,7 +1,7 @@
 import { UploadedFile } from "@/types/file.types";
 import { useEffect, useState, lazy, Suspense } from "react";
 import { toast } from "sonner";
-import FileFolderTable from "./components/Table/FileFolderTable"; 
+import FileFolderTable from "./components/Table/FileFolderTable";
 import { Anchor, Breadcrumbs, ActionIcon, Tooltip, Group, Text as MantineText } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import LiveFileUploadController from "./components/LiveFileUploadController";
@@ -11,12 +11,15 @@ import useCreateFolder from "./hooks/createFolder";
 import useCreateFile from "./hooks/createFile";
 import { useNavigate, useParams } from "react-router-dom";
 import { useDragAndDrop } from "./hooks/useDragDrop";
-import useFileGetStatus from "./hooks/useFileGetStatus"; 
+import useFileGetStatus from "./hooks/useFileGetStatus";
 import useMoveItem from "./hooks/useMoveItem";
 import Profile from "./components/Profile";
 import MoveItemModal from "./components/Modal/MoveItemModal";
 import MediaPreviewModal, { isMediaFile } from "./components/Modal/MediaPreviewModal";
 import { IconTrash, IconArrowsMove, IconFolderPlus, IconFilePlus, IconUpload, IconX } from "@tabler/icons-react";
+import StorageIndicator from "./components/StorageIndicator";
+import DirectPreviewModal from "./components/Modal/DirectPreviewModal";
+import DirectUploadController from "./components/DirectUploadController";
 
 const ResourceUploadModal = lazy(() => import("./components/Modal/ResourceUploadModal"));
 const CreateFolderModal = lazy(() => import("./components/Modal/CreateFolderModal"));
@@ -27,6 +30,7 @@ const Page = () => {
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const [previewFile, setPreviewFile] = useState<UploadedFile | null>(null);
+  const [directPreviewFile, setDirectPreviewFile] = useState<UploadedFile | null>(null);
   const { folderId } = useParams();
   const moveItemMutation = useMoveItem();
   const navigate = useNavigate();
@@ -35,16 +39,16 @@ const Page = () => {
     uploadQueue,
     allFilesAndFolders: data,
     refetchFilesAndFolders: refetch,
-    isLoading, 
+    isLoading,
   } = useChunkedUpload();
   const getUploadStatusMutation = useFileGetStatus();
-  
+
   const [opened, { open, close }] = useDisclosure(false);
   const [
     isCreateNewFolderOpened,
     { open: openCreateNewFolder, close: closeCreateNewFolder },
   ] = useDisclosure(false);
-  
+
   const [
     isCreateNewFileOpened,
     { open: openCreateNewFile, close: closeCreateNewFile },
@@ -56,7 +60,7 @@ const Page = () => {
 
 
   const { isDragging } = useDragAndDrop({
-    onFilesDropped: (files) =>{
+    onFilesDropped: (files) => {
       setDroppedFiles(files);
       open();
     }
@@ -110,11 +114,11 @@ const Page = () => {
           closeCreateNewFolder();
         },
         onError: (error: any) => {
-            if (error?.status === 409 || error?.response?.status === 409) {
-                toast.error(`Folder "${folderName}" already exists in this location`);
-            } else {
-                toast.error("Failed to create folder");
-            }
+          if (error?.status === 409 || error?.response?.status === 409) {
+            toast.error(`Folder "${folderName}" already exists in this location`);
+          } else {
+            toast.error("Failed to create folder");
+          }
         }
       },
     );
@@ -133,11 +137,11 @@ const Page = () => {
           closeCreateNewFile();
         },
         onError: (error: any) => {
-            if (error?.status === 409 || error?.response?.status === 409) {
-                toast.error(`File "${fileName}" already exists in this location`);
-            } else {
-                toast.error("Failed to create file");
-            }
+          if (error?.status === 409 || error?.response?.status === 409) {
+            toast.error(`File "${fileName}" already exists in this location`);
+          } else {
+            toast.error("Failed to create file");
+          }
         }
       },
     );
@@ -161,7 +165,7 @@ const Page = () => {
 
   const handleFileFolderClick = (entityId: string, isDirectory: boolean, ctrlKey: boolean) => {
     const newSelected = new Set(selectedFiles);
-    
+
     if (ctrlKey) {
       if (newSelected.has(entityId)) {
         newSelected.delete(entityId);
@@ -173,7 +177,7 @@ const Page = () => {
       // Regular click: Select exclusively or deselect if it's the only one selected
       const isCurrentlySelected = selectedFiles.has(entityId);
       const isOnlySelection = selectedFiles.size === 1 && isCurrentlySelected;
-      
+
       if (isOnlySelection) {
         // Clicking the only selected item - deselect it
         setSelectedFiles(new Set());
@@ -188,16 +192,16 @@ const Page = () => {
     if (isDirectory && entityId) {
       navigate(`/folder/${entityId}`);
     } else if (!isDirectory && entityId) {
-       const file = data?.find((f: UploadedFile) => f._id === entityId);
-       if (file) {
-         const { isMedia } = isMediaFile(file.fileName);
-         if (isMedia) {
-           setPreviewFile(file);
-           return;
-         }
-       }
-       // Fallback to document editor/viewer
-       navigate(`/document/${entityId}`);
+      const file = data?.find((f: UploadedFile) => f._id === entityId);
+      if (file) {
+        const { isMedia } = isMediaFile(file.fileName);
+        if (isMedia) {
+          setPreviewFile(file);
+          return;
+        }
+      }
+      // Fallback to document editor/viewer
+      navigate(`/document/${entityId}`);
     }
   };
 
@@ -216,8 +220,8 @@ const Page = () => {
   const indeterminate =
     selectedFiles.size > 0 && selectedFiles.size < (data?.length || 0);
 
-  function getParents(){
-    if(getUploadStatusMutation.data?.parents && getUploadStatusMutation.data.parents.length > 0){
+  function getParents() {
+    if (getUploadStatusMutation.data?.parents && getUploadStatusMutation.data.parents.length > 0) {
       return getUploadStatusMutation.data?.parents
     }
     return []
@@ -226,10 +230,10 @@ const Page = () => {
   const handleMoveDroppedItems = (draggedIds: string[], targetFolderId: string | null) => {
     // Prevent moving into self (current folder)
     if (targetFolderId === folderId || (targetFolderId === null && !folderId)) {
-        return;
+      return;
     }
 
-    const movePromises = draggedIds.map(id => 
+    const movePromises = draggedIds.map(id =>
       moveItemMutation.mutateAsync({ uploadId: id, newParentId: targetFolderId })
     );
 
@@ -256,7 +260,7 @@ const Page = () => {
 
 
   return (
-    <div 
+    <div
       onClick={(e) => {
         // Deselect if clicking outside the table container and not on interactive/toolbar elements
         const target = e.target as HTMLElement;
@@ -268,12 +272,12 @@ const Page = () => {
     >
       <Suspense fallback={null}>
         {opened && (
-            <ResourceUploadModal
-              opened={opened}
-              close={handleModalClose}
-              initialFiles={droppedFiles}
-            />
-          )}
+          <ResourceUploadModal
+            opened={opened}
+            close={handleModalClose}
+            initialFiles={droppedFiles}
+          />
+        )}
         {isCreateNewFolderOpened && (
           <CreateFolderModal
             onSubmit={handleCreateNewFolder}
@@ -310,126 +314,138 @@ const Page = () => {
       )}
       {/* Upload Controller - manages its own visibility */}
       <LiveFileUploadController />
-        
+
       <div className="w-full max-w-7xl px-4 md:px-8 py-8">
         <div className="toolbar-container flex justify-between items-center mb-6">
-             {/* Left side: Breadcrumbs or Title */}
-             <div className="flex-1">
-                {
-                  folderId ? (
-                    <FileFolderLocation
-                      onDrop={handleMoveDroppedItems}
-                      folderIds={[...getParents(), folderId]}
-                    />
-                  ) : (
-                    <h1 
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        setIsHomeDragOver(true);
-                      }}
-                      onDragLeave={() => setIsHomeDragOver(false)}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        setIsHomeDragOver(false);
-                        try {
-                          const dataTransfer = JSON.parse(e.dataTransfer.getData("application/json"));
-                          const draggedIds = dataTransfer.ids || [];
-                          if (draggedIds.length > 0) {
-                            handleMoveDroppedItems(draggedIds, null);
-                          }
-                        } catch(err) { console.error(err); }
-                      }}
-                      className={`text-2xl font-bold transition-colors cursor-default ${isHomeDragOver ? "text-blue-600" : "text-gray-800"}`}
-                    >
-                      F Manager
-                    </h1>
-                  )
-                }
-             </div>
+          {/* Left side: Breadcrumbs or Title */}
+          <div className="flex-1">
+            {
+              folderId ? (
+                <FileFolderLocation
+                  onDrop={handleMoveDroppedItems}
+                  folderIds={[...getParents(), folderId]}
+                />
+              ) : (
+                <h1
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsHomeDragOver(true);
+                  }}
+                  onDragLeave={() => setIsHomeDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsHomeDragOver(false);
+                    try {
+                      const dataTransfer = JSON.parse(e.dataTransfer.getData("application/json"));
+                      const draggedIds = dataTransfer.ids || [];
+                      if (draggedIds.length > 0) {
+                        handleMoveDroppedItems(draggedIds, null);
+                      }
+                    } catch (err) { console.error(err); }
+                  }}
+                  className={`text-2xl font-bold transition-colors cursor-default ${isHomeDragOver ? "text-blue-600" : "text-gray-800"}`}
+                >
+                  F Manager
+                </h1>
+              )
+            }
+          </div>
 
-             {/* Right side: Actions & Profile */}
-             <div className="flex items-center gap-4">
-                {/* Global Actions */}
-                <Group gap="xs">
-                    <Tooltip label="Upload File">
-                        <ActionIcon onClick={open} variant="light" size="lg" radius="md">
-                            <IconUpload size={20} />
-                        </ActionIcon>
-                    </Tooltip>
-                    <Tooltip label="New Folder">
-                        <ActionIcon onClick={openCreateNewFolder} variant="light" size="lg" radius="md">
-                            <IconFolderPlus size={20} />
-                        </ActionIcon>
-                    </Tooltip>
-                    <Tooltip label="New File">
-                        <ActionIcon onClick={openCreateNewFile} variant="light" size="lg" radius="md">
-                            <IconFilePlus size={20} />
-                        </ActionIcon>
-                    </Tooltip>
-                </Group>
+          {/* Right side: Actions & Profile */}
+          <div className="flex items-center gap-4">
+            {/* Global Actions */}
+            <Group gap="xs">
+              <Tooltip label="Upload File">
+                <ActionIcon onClick={open} variant="light" size="lg" radius="md">
+                  <IconUpload size={20} />
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label="New Folder">
+                <ActionIcon onClick={openCreateNewFolder} variant="light" size="lg" radius="md">
+                  <IconFolderPlus size={20} />
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label="New File">
+                <ActionIcon onClick={openCreateNewFile} variant="light" size="lg" radius="md">
+                  <IconFilePlus size={20} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
 
-                {/* Selection Actions */}
-                {selectedFiles.size > 0 && (
-                    <div className="flex items-center gap-2 pl-4 border-l border-gray-300">
-                        <MantineText size="sm" fw={500} style={{userSelect: "none"}}>{selectedFiles.size} Selected</MantineText>
-                        <Tooltip label="Deselect All">
-                            <ActionIcon onClick={() => setSelectedFiles(new Set())} variant="subtle" color="gray" size="lg" radius="md">
-                                <IconX size={20} />
-                            </ActionIcon>
-                        </Tooltip>
-                        
-                        <div className="w-px h-6 bg-gray-300 mx-1" />
+            {/* Selection Actions */}
+            {selectedFiles.size > 0 && (
+              <div className="flex items-center gap-2 pl-4 border-l border-gray-300">
+                <MantineText size="sm" fw={500} style={{ userSelect: "none" }}>{selectedFiles.size} Selected</MantineText>
+                <Tooltip label="Deselect All">
+                  <ActionIcon onClick={() => setSelectedFiles(new Set())} variant="subtle" color="gray" size="lg" radius="md">
+                    <IconX size={20} />
+                  </ActionIcon>
+                </Tooltip>
 
-                        <Tooltip label={`Move ${selectedFiles.size} Item(s)`}>
-                            <ActionIcon onClick={handleMoveSelected} variant="filled" color="blue" size="lg" radius="md">
-                                <IconArrowsMove size={20} />
-                            </ActionIcon>
-                        </Tooltip>
-                        <Tooltip label={`Delete ${selectedFiles.size} Item(s)`}>
-                            <ActionIcon onClick={deleteAllUploads} variant="filled" color="red" size="lg" radius="md">
-                                <IconTrash size={20} />
-                            </ActionIcon>
-                        </Tooltip>
-                    </div>
-                )}
+                <div className="w-px h-6 bg-gray-300 mx-1" />
 
-                <div className="pl-2">
-                    <Profile />
-                </div>
-             </div>
+                <Tooltip label={`Move ${selectedFiles.size} Item(s)`}>
+                  <ActionIcon onClick={handleMoveSelected} variant="filled" color="blue" size="lg" radius="md">
+                    <IconArrowsMove size={20} />
+                  </ActionIcon>
+                </Tooltip>
+                <Tooltip label={`Delete ${selectedFiles.size} Item(s)`}>
+                  <ActionIcon onClick={deleteAllUploads} variant="filled" color="red" size="lg" radius="md">
+                    <IconTrash size={20} />
+                  </ActionIcon>
+                </Tooltip>
+              </div>
+            )}
+
+            <div className="pl-2">
+              <StorageIndicator />
+            </div>
+            <div className="pl-2">
+              <Profile />
+            </div>
+          </div>
         </div>
 
         <div className="min-h-[500px] flex flex-col">
-             <FileFolderTable
-              isLoading={isLoading || createFolderMutation.isPending || createFileMutation.isPending || deleteAllMutation.isPending}
-              allSelected={allSelected}
-              indeterminate={indeterminate}
-              selectedFiles={selectedFiles}
-              setSelectedFiles={setSelectedFiles}
-              handleSelectAll={handleSelectAll}
-              handleSelectFile={handleSelectFile}
-              handleDeleteFile={handleDeleteFile}
-              data={data ?? []}
-              onFileFolderRowClick={handleFileFolderClick}
-              onFileFolderRowDoubleClick={handleFileFolderDoubleClick}
-              onPreviewMedia={setPreviewFile}
-            />
+          <FileFolderTable
+            isLoading={isLoading || createFolderMutation.isPending || createFileMutation.isPending || deleteAllMutation.isPending}
+            allSelected={allSelected}
+            indeterminate={indeterminate}
+            selectedFiles={selectedFiles}
+            setSelectedFiles={setSelectedFiles}
+            handleSelectAll={handleSelectAll}
+            handleSelectFile={handleSelectFile}
+            handleDeleteFile={handleDeleteFile}
+            data={data ?? []}
+            onFileFolderRowClick={handleFileFolderClick}
+            onFileFolderRowDoubleClick={handleFileFolderDoubleClick}
+            onPreviewMedia={setPreviewFile}
+            onDirectPreview={setDirectPreviewFile}
+          />
         </div>
       </div>
+      {directPreviewFile && (
+        <DirectPreviewModal
+          opened={!!directPreviewFile}
+          onClose={() => setDirectPreviewFile(null)}
+          file={directPreviewFile}
+        />
+      )}
+      <DirectUploadController />
     </div>
   );
 };
 
 
 interface FileFolderLocationProps {
-    folderIds: string[];
-    onDrop: (draggedIds: string[], targetFolderId: string | null) => void;
+  folderIds: string[];
+  onDrop: (draggedIds: string[], targetFolderId: string | null) => void;
 }
 
 const FileFolderLocation = ({ folderIds, onDrop }: FileFolderLocationProps) => {
   const navigate = useNavigate()
   const [dragOverId, setDragOverId] = useState<string | null>(null);
-  
+
   const handleDrop = (e: React.DragEvent, targetId: string | null) => {
     e.preventDefault();
     setDragOverId(null);
@@ -438,12 +454,12 @@ const FileFolderLocation = ({ folderIds, onDrop }: FileFolderLocationProps) => {
       if (data.ids && onDrop) {
         onDrop(data.ids, targetId);
       }
-    } catch(err) { console.error(err); }
+    } catch (err) { console.error(err); }
   };
 
   return (
     <Breadcrumbs>
-      <Anchor 
+      <Anchor
         onClick={() => navigate("/")}
         onDragOver={(e) => {
           e.preventDefault();
@@ -458,9 +474,9 @@ const FileFolderLocation = ({ folderIds, onDrop }: FileFolderLocationProps) => {
         Home
       </Anchor>
       {folderIds.map((folderId: string) => (
-        <Anchor 
-          key={folderId} 
-          onClick={()=>navigate(`/folder/${folderId}`)}
+        <Anchor
+          key={folderId}
+          onClick={() => navigate(`/folder/${folderId}`)}
           onDragOver={(e) => {
             e.preventDefault();
             setDragOverId(folderId);

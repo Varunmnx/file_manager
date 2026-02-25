@@ -45,6 +45,12 @@ export class User {
   @Prop()
   lastLogin?: Date;
 
+  @Prop({ default: 0 })
+  storageUsed: number;
+
+  @Prop({ default: 350 * 1024 * 1024 }) // 350 MB
+  storageLimit: number;
+
   public static builder() {
     return new User.Builder();
   }
@@ -64,6 +70,8 @@ export class User {
     builder.isVerified = this.isVerified;
     builder.verificationToken = this.verificationToken;
     builder.lastLogin = this.lastLogin;
+    builder.storageUsed = this.storageUsed;
+    builder.storageLimit = this.storageLimit;
     return builder;
   }
 
@@ -81,6 +89,8 @@ export class User {
     isVerified = false;
     verificationToken?: string;
     lastLogin?: Date;
+    storageUsed = 0;
+    storageLimit = 350 * 1024 * 1024;
 
     public setEmail(value: string) {
       this.email = value;
@@ -147,6 +157,16 @@ export class User {
       return this;
     }
 
+    public setStorageUsed(value: number) {
+      this.storageUsed = value;
+      return this;
+    }
+
+    public setStorageLimit(value: number) {
+      this.storageLimit = value;
+      return this;
+    }
+
     public build(): User {
       const e = new User();
       e.email = this.email;
@@ -162,6 +182,8 @@ export class User {
       e.isVerified = this.isVerified;
       e.verificationToken = this.verificationToken;
       e.lastLogin = this.lastLogin;
+      e.storageUsed = this.storageUsed;
+      e.storageLimit = this.storageLimit;
       return e;
     }
   };

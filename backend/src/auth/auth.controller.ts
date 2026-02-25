@@ -10,7 +10,7 @@ import { ConfigService } from '@nestjs/config';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private jwtService: JwtService, private authService:UsersService, private readonly configService:ConfigService) {}
+  constructor(private jwtService: JwtService, private authService: UsersService, private readonly configService: ConfigService) { }
   // handles google redirection 
   @Get('google')
   @UseGuards(GoogleAuthGuard)
@@ -20,9 +20,9 @@ export class AuthController {
 
   @Get('google/callback')
   @UseGuards(GoogleAuthGuard)
-  async googleAuthRedirect(@Req() req:{user:CreateUserDto}, @Res() res:Response) {
+  async googleAuthRedirect(@Req() req: { user: CreateUserDto }, @Res() res: Response) {
     const user = req.user;
-    const token = await this.authService.login(user); 
+    const token = await this.authService.login(user);
 
     // Redirect to frontend with token
     return res.redirect(`${this.configService.getOrThrow("CLIENT_BASE_URL")}/auth/google/callback?token=${token}`);
@@ -30,7 +30,7 @@ export class AuthController {
 
   @Get('profile')
   @UseGuards(JwtAuthGuard)
-  async test(@Req() req:{user:{_id:string,email:string}}) {
+  async test(@Req() req: { user: { _id: string, email: string } }) {
     const user = req.user;
     const currentUser = await this.authService.findByEmail(user.email);
     return currentUser;
@@ -38,16 +38,22 @@ export class AuthController {
 
   @Post('signup')
   async signup(@Body() dto: CreateUserDto) {
-      return this.authService.signupLocal(dto);
+    return this.authService.signupLocal(dto);
   }
 
   @Post('login')
   async login(@Body() dto: any) {
-      return this.authService.loginLocal(dto);
+    return this.authService.loginLocal(dto);
   }
 
   @Get('verify')
   async verify(@Query('token') token: string) {
-      return this.authService.verifyEmail(token);
+    return this.authService.verifyEmail(token);
+  }
+
+  @Get('storage')
+  @UseGuards(JwtAuthGuard)
+  async getStorageInfo(@Req() req: { user: { _id: string } }) {
+    return this.authService.getStorageInfo(req.user._id);
   }
 }

@@ -3,8 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { FileFolderRepository } from '../repositories/file-folder.repository';
 import { ActivityRepository } from '../repositories/activity.repository';
 import { FileRevisionRepository } from '../../onlyoffice/repositories/file-revision.repository';
-import { existsSync, rmSync, unlinkSync } from 'fs';
-import { join } from 'path';
+import { R2StorageService } from '../../r2-storage/r2-storage.service';
 import { Types } from 'mongoose';
 
 /**
@@ -15,9 +14,6 @@ import { Types } from 'mongoose';
 @Injectable()
 export class UploadCleanupService {
     private readonly logger = new Logger(UploadCleanupService.name);
-    private readonly uploadDir = join(process.cwd(), 'uploads');
-    private readonly chunksDir = join(process.cwd(), 'uploads', 'chunks');
-    private readonly revisionsDir = join(process.cwd(), 'uploads', 'revisions');
 
     // 24 hours in milliseconds
     private readonly STALE_UPLOAD_THRESHOLD_MS = 24 * 60 * 60 * 1000;
@@ -26,6 +22,7 @@ export class UploadCleanupService {
         private readonly fileFolderRepository: FileFolderRepository,
         private readonly activityRepository: ActivityRepository,
         private readonly fileRevisionRepository: FileRevisionRepository,
+        private readonly r2StorageService: R2StorageService,
     ) { }
 
     /**
@@ -53,7 +50,7 @@ export class UploadCleanupService {
 
             for (const upload of staleUploads) {
                 try {
-                    await this.cleanupSingleUpload(upload._id.toString(), upload.fileName);
+                    await this.cleanupSingleUpload(upload._id.toString(), upload.r2Key, upload.r2UploadId);
                     this.logger.log(`Cleaned up stale upload: ${upload.fileName} (ID: ${upload._id})`);
                 } catch (error) {
                     this.logger.error(`Failed to clean up upload ${upload._id}:`, error);
@@ -67,49 +64,46 @@ export class UploadCleanupService {
     }
 
     /**
-     * Clean up a single upload - delete from DB, delete chunks, revisions, and activities
+     * Clean up a single upload - delete from DB, delete from R2, revisions, and activities
      */
-    private async cleanupSingleUpload(uploadId: string, fileName: string): Promise<void> {
-        // 1. Delete chunk files from disk
-        const chunkDir = join(this.chunksDir, uploadId);
-        if (existsSync(chunkDir)) {
-            rmSync(chunkDir, { recursive: true, force: true });
-        }
-
-        // 2. Delete the actual file if it exists (uses uploadId as filename in uploads dir)
-        const filePath = join(this.uploadDir, uploadId);
-        if (existsSync(filePath)) {
+    private async cleanupSingleUpload(uploadId: string, r2Key?: string, r2UploadId?: string): Promise<void> {
+        // 1. Abort R2 multipart upload if still in progress
+        if (r2Key && r2UploadId) {
             try {
-                unlinkSync(filePath);
+                await this.r2StorageService.abortMultipartUpload(r2Key, r2UploadId);
+                this.logger.log(`[R2] Aborted multipart upload for ${uploadId}`);
             } catch (e) {
-                this.logger.warn(`Could not delete file ${filePath}: ${e.message}`);
+                this.logger.warn(`[R2] Could not abort multipart upload for ${uploadId}: ${e.message}`);
             }
         }
 
-        // Also try with the fileName
-        const filePathByName = join(this.uploadDir, fileName);
-        if (existsSync(filePathByName)) {
+        // 2. Delete the file from R2 if it exists
+        if (r2Key) {
             try {
-                unlinkSync(filePathByName);
+                await this.r2StorageService.deleteFile(r2Key);
             } catch (e) {
-                this.logger.warn(`Could not delete file ${filePathByName}: ${e.message}`);
+                this.logger.warn(`[R2] Could not delete file for ${uploadId}: ${e.message}`);
             }
         }
 
-        // 3. Delete revisions from DB and disk
+        // 3. Delete revisions from DB and R2
         const revisions = await this.fileRevisionRepository.findByFileId(uploadId);
+        const revisionKeysToDelete: string[] = [];
         for (const revision of revisions) {
             if (revision.revisionFileName) {
-                const revisionPath = join(this.revisionsDir, revision.revisionFileName);
-                if (existsSync(revisionPath)) {
-                    try {
-                        unlinkSync(revisionPath);
-                    } catch (e) {
-                        this.logger.warn(`Could not delete revision file ${revisionPath}: ${e.message}`);
-                    }
-                }
+                const revisionKey = this.r2StorageService.buildRevisionKey(revision.revisionFileName);
+                revisionKeysToDelete.push(revisionKey);
             }
         }
+
+        if (revisionKeysToDelete.length > 0) {
+            try {
+                await this.r2StorageService.deleteFiles(revisionKeysToDelete);
+            } catch (e) {
+                this.logger.warn(`[R2] Could not delete revision files for ${uploadId}: ${e.message}`);
+            }
+        }
+
         await this.fileRevisionRepository.deleteAllRevisions(uploadId);
 
         // 4. Delete activities
@@ -129,7 +123,7 @@ export class UploadCleanupService {
         let cleaned = 0;
         for (const upload of staleUploads) {
             try {
-                await this.cleanupSingleUpload(upload._id.toString(), upload.fileName);
+                await this.cleanupSingleUpload(upload._id.toString(), upload.r2Key, upload.r2UploadId);
                 cleaned++;
             } catch (error) {
                 this.logger.error(`Failed to clean up upload ${upload._id}:`, error);

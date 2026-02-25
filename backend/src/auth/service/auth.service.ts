@@ -1,10 +1,13 @@
-import { Injectable, ConflictException, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Injectable, ConflictException, UnauthorizedException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { User, UserDocument } from '../entities/user.entity';
 import { UserRepository } from '../repository/user.repository';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { EmailService } from 'src/email/email.service';
+
+const MAX_USERS = 20;
+const MAX_STORAGE_BYTES = 350 * 1024 * 1024; // 350 MB
 
 export interface CreateUserDto {
   email: string;
@@ -39,12 +42,20 @@ export class UsersService {
   }
 
   async register(user: CreateUserDto): Promise<UserDocument> {
+    // Check user count limit
+    const count = await this.userRepository.countAll();
+    if (count >= MAX_USERS) {
+      throw new ForbiddenException(`Maximum of ${MAX_USERS} users allowed. Registration is closed.`);
+    }
+
     // Google users are automatically verified
     const userBuilder = User.builder()
       .setEmail(user.email)
       .setFirstName(user.firstName)
       .setLastName(user.lastName)
-      .setIsVerified(true);
+      .setIsVerified(true)
+      .setStorageUsed(0)
+      .setStorageLimit(MAX_STORAGE_BYTES);
 
     if (user.picture) userBuilder.setPicture(user.picture);
     if (user.googleId) userBuilder.setGoogleId(user.googleId);
@@ -108,6 +119,12 @@ export class UsersService {
   }
 
   async signupLocal(dto: CreateUserDto) {
+    // Check user count limit
+    const count = await this.userRepository.countAll();
+    if (count >= MAX_USERS) {
+      throw new ForbiddenException(`Maximum of ${MAX_USERS} users allowed. Registration is closed.`);
+    }
+
     const existing = await this.findByEmail(dto.email);
     if (existing) {
       throw new ConflictException('User with this email already exists');
@@ -135,6 +152,36 @@ export class UsersService {
 
     await this.emailService.sendVerificationEmail(newUser.email, verificationToken);
     return newUser;
+  }
+
+  // --- Storage Quota ---
+
+  async checkStorageQuota(userId: string, additionalBytes: number): Promise<void> {
+    const user = await this.userRepository.findById(userId);
+    if (!user) throw new BadRequestException('User not found');
+
+    const limit = user.storageLimit || MAX_STORAGE_BYTES;
+    if ((user.storageUsed || 0) + additionalBytes > limit) {
+      const usedMB = ((user.storageUsed || 0) / (1024 * 1024)).toFixed(1);
+      const limitMB = (limit / (1024 * 1024)).toFixed(0);
+      throw new ForbiddenException(`Storage limit exceeded. Used: ${usedMB}MB / ${limitMB}MB`);
+    }
+  }
+
+  async updateStorageUsed(userId: string, deltaBytes: number): Promise<void> {
+    const user = await this.userRepository.findById(userId);
+    if (!user) return;
+    const newUsed = Math.max(0, (user.storageUsed || 0) + deltaBytes);
+    await this.userRepository.findOneAndUpdate({ _id: user._id }, { $set: { storageUsed: newUsed } });
+  }
+
+  async getStorageInfo(userId: string): Promise<{ storageUsed: number; storageLimit: number }> {
+    const user = await this.userRepository.findById(userId);
+    if (!user) throw new BadRequestException('User not found');
+    return {
+      storageUsed: user.storageUsed || 0,
+      storageLimit: user.storageLimit || MAX_STORAGE_BYTES,
+    };
   }
 
   async verifyEmail(token: string) {
