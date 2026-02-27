@@ -292,11 +292,11 @@ export class UploadController {
       throw new NotFoundException('File not found in R2');
     }
 
-    // Default 15 minutes, max 1 hour
-    let expiresInSeconds = 900;
+    // Default 1 hour, max 12 hours
+    let expiresInSeconds = 3600;
     if (expiry) {
       const parsed = parseInt(expiry, 10);
-      if (!isNaN(parsed) && parsed > 0 && parsed <= 3600) {
+      if (!isNaN(parsed) && parsed > 0 && parsed <= 43200) {
         expiresInSeconds = parsed;
       }
     }

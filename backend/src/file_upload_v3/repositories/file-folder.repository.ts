@@ -19,11 +19,16 @@ export class FileFolderRepository extends EntityRepository<UploadDocument> {
         throw new BadRequestException('Invalid input parameters');
       }
 
-      console.log("updated", updatedUploadSessionStatus);
+      // Exclude _id from the $set payload — MongoDB does not allow updating the
+      // immutable _id field, and passing it causes the whole update to fail.
+      // Also exclude the populated createdBy / lastViewedBy objects so that we
+      // never accidentally overwrite the stored ObjectId reference with a full
+      // document (which would break future populate() calls).
+      const { _id, createdBy, lastViewedBy, ...safePayload } = updatedUploadSessionStatus as any;
 
       const updated = await this.entityModel.findByIdAndUpdate(
         toObjectId(id),
-        { $set: updatedUploadSessionStatus },
+        { $set: safePayload },
         { new: true, runValidators: true }
       ).populate('createdBy', 'firstName lastName email picture').populate('lastViewedBy', 'firstName lastName email picture');
 

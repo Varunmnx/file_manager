@@ -356,6 +356,33 @@ export class UploadPoolService {
             await this.cleanupActivitiesBatch(childIds);
         }
 
+        // ── Deduct freed storage from owner's quota ──────────────────────────────
+        // Collect all completed non-folder items: the session itself + its children.
+        // Only files that have finished uploading occupy real storage quota.
+        const allItems = [session, ...children];
+        const storageByUser = new Map<string, number>();
+        for (const item of allItems) {
+            if (item.isFolder) continue; // folder sizes are derived sums — don't double-count
+            const isComplete = (item.uploadedChunks?.length ?? 0) >= (item.totalChunks ?? 1);
+            if (!isComplete || !item.fileSize) continue;
+
+            const ownerObj = item.createdBy as any;
+            const ownerId = ownerObj?._id?.toString() || ownerObj?.toString();
+            if (!ownerId) continue;
+
+            storageByUser.set(ownerId, (storageByUser.get(ownerId) ?? 0) + item.fileSize);
+        }
+
+        for (const [userId, bytes] of storageByUser) {
+            try {
+                await this.authService.updateStorageUsed(userId, -bytes);
+                this.logger.log(`[Storage] Freed ${bytes} bytes for user ${userId} after deleting ${session.fileName}`);
+            } catch (e) {
+                this.logger.warn(`[Storage] Failed to update quota for user ${userId}: ${e.message}`);
+            }
+        }
+        // ─────────────────────────────────────────────────────────────────────────
+
         await this.fileFolderRepository.deleteMany({
             parents: session._id
         });
@@ -587,14 +614,18 @@ export class UploadPoolService {
             }
         }
 
-        // Mark as complete by setting uploadedChunks to a full list
-        const updatedBuilder = uploadSession.toBuilder();
-        updatedBuilder.setUploadedChunks([0]);
-        updatedBuilder.setFileSize(actualSize);
-        updatedBuilder.setTotalChunks(1); // Ensure it's 1
-        updatedBuilder.setLastActivity(new Date());
+        // Mark as complete by setting only the fields that need to change.
+        // We intentionally pass a minimal patch object – NOT the full built entity –
+        // so that MongoDB never sees the immutable _id field or a populated createdBy
+        // object inside the $set payload.
+        const patch: Partial<UploadEntity> = {
+            uploadedChunks: [0],
+            fileSize: actualSize,
+            totalChunks: 1,
+            lastActivity: new Date(),
+        } as any;
 
-        const finalized = await this.fileFolderRepository.update(uploadSession._id, updatedBuilder.build());
+        const finalized = await this.fileFolderRepository.update(uploadSession._id, patch);
 
         this.logger.log(`[DirectUpload] Confirmed: ${uploadSession.fileName} (${actualSize} bytes). DB Updated: ${!!finalized}`);
 
@@ -625,24 +656,30 @@ export class UploadPoolService {
     async deleteAllUploadedFiles(uploadIds: string[]) {
         await this.resetParentFolderSizes(uploadIds);
 
-        // Collect all IDs to delete (including folder children)
+        // Collect all IDs to delete (including folder children) along with full item docs
         const allIdsToDelete = new Set<string>(uploadIds);
         const allItemsToCleanup: string[] = [...uploadIds];
         const allR2KeysToDelete: string[] = [];
+        // Keep the full document for every item so we can calculate freed storage
+        const allItemDocs: import('../entities/upload-status.entity').UploadDocument[] = [];
 
         // For each item, check if it's a folder and get all descendants
         for (const uploadId of uploadIds) {
             const item = await this.fileFolderRepository.findById(uploadId);
-            if (item?.r2Key) {
+            if (!item) continue;
+            allItemDocs.push(item);
+
+            if (item.r2Key) {
                 allR2KeysToDelete.push(item.r2Key);
             }
-            if (item?.isFolder) {
+            if (item.isFolder) {
                 const descendants = await this.fileFolderRepository.findDescendants(item._id);
                 for (const descendant of descendants) {
                     const descendantId = descendant._id.toString();
                     if (!allIdsToDelete.has(descendantId)) {
                         allIdsToDelete.add(descendantId);
                         allItemsToCleanup.push(descendantId);
+                        allItemDocs.push(descendant);
                     }
                     if (descendant.r2Key) {
                         allR2KeysToDelete.push(descendant.r2Key);
@@ -650,6 +687,32 @@ export class UploadPoolService {
                 }
             }
         }
+
+        // ── Deduct freed storage from each owner's quota ─────────────────────────
+        // Only completed, non-folder files occupy real storage quota.
+        // Group by owner to handle multi-user bulk deletes correctly.
+        const storageByUser = new Map<string, number>();
+        for (const item of allItemDocs) {
+            if (item.isFolder) continue;
+            const isComplete = (item.uploadedChunks?.length ?? 0) >= (item.totalChunks ?? 1);
+            if (!isComplete || !item.fileSize) continue;
+
+            const ownerObj = item.createdBy as any;
+            const ownerId = ownerObj?._id?.toString() || ownerObj?.toString();
+            if (!ownerId) continue;
+
+            storageByUser.set(ownerId, (storageByUser.get(ownerId) ?? 0) + item.fileSize);
+        }
+
+        for (const [userId, bytes] of storageByUser) {
+            try {
+                await this.authService.updateStorageUsed(userId, -bytes);
+                this.logger.log(`[Storage] Freed ${bytes} bytes for user ${userId} (bulk delete of ${uploadIds.length} item(s))`);
+            } catch (e) {
+                this.logger.warn(`[Storage] Failed to update quota for user ${userId}: ${e.message}`);
+            }
+        }
+        // ─────────────────────────────────────────────────────────────────────────
 
         // Delete all revisions for each file/folder
         for (const itemId of allItemsToCleanup) {

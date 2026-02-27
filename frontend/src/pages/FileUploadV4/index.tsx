@@ -1,5 +1,6 @@
 import { UploadedFile } from "@/types/file.types";
 import { useEffect, useState, lazy, Suspense } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import FileFolderTable from "./components/Table/FileFolderTable";
 import { Anchor, Breadcrumbs, ActionIcon, Tooltip, Group, Text as MantineText } from "@mantine/core";
@@ -57,6 +58,7 @@ const Page = () => {
   const deleteAllMutation = useDeleteAll();
   const createFolderMutation = useCreateFolder();
   const createFileMutation = useCreateFile();
+  const queryClient = useQueryClient();
 
 
   const { isDragging } = useDragAndDrop({
@@ -97,7 +99,11 @@ const Page = () => {
   const deleteAllUploads = () => {
     deleteAllMutation
       .mutateAsync({ uploadIds: Array.from(selectedFiles) })
-      .then(() => refetch());
+      .then(() => {
+        refetch();
+        queryClient.invalidateQueries({ queryKey: ["storage-info"] });
+        setSelectedFiles(new Set());
+      });
   };
 
   const handleCreateNewFolder = (folderName: string, parentId?: string) => {
@@ -150,7 +156,10 @@ const Page = () => {
   const handleDeleteFile = (uploadId: string) => {
     deleteAllMutation
       .mutateAsync({ uploadIds: [uploadId] })
-      .then(() => refetch());
+      .then(() => {
+        refetch();
+        queryClient.invalidateQueries({ queryKey: ["storage-info"] });
+      });
   };
 
   const handleSelectFile = (uploadId: string, checked: boolean) => {
@@ -356,7 +365,7 @@ const Page = () => {
             {/* Global Actions */}
             <Group gap="xs">
               <Tooltip label="Upload File">
-                <ActionIcon onClick={open} variant="light" size="lg" radius="md">
+                <ActionIcon disabled={true} onClick={open} variant="light" size="lg" radius="md">
                   <IconUpload size={20} />
                 </ActionIcon>
               </Tooltip>

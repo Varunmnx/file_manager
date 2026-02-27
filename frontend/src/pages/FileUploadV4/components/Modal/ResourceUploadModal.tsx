@@ -14,7 +14,7 @@ import {
   useChunkedUpload,
 } from "../../context/chunked-upload.context";
 import { useParams } from "react-router-dom";
-import useCreateFolder from "../../hooks/createFolder"; 
+import useCreateFolder from "../../hooks/createFolder";
 
 interface Props {
   opened: boolean;
@@ -43,15 +43,19 @@ const ResourceUploadModal = ({ opened, close, initialFiles = [] }: Props) => {
 
   const groupFilesByPath = (files: FileItem[]): Map<string, FileItem[]> => {
     const pathMap = new Map<string, FileItem[]>();
-    
+
     files.forEach((file) => {
       const pathParts = file.path.split("/");
       const folderPath = pathParts.slice(0, -1).join("/");
-      
+
       const existingFiles = pathMap.get(folderPath) || [];
-      pathMap.set(folderPath, [...existingFiles, {...file, name: file.path}]);
+      // Use file.name (just the base filename) — NOT file.path (which is the full
+      // relative path like "folder/subfolder/image.png"). The path is only used here
+      // to determine which parent folder the file belongs to; the actual name stored
+      // in the DB must be the bare filename so it displays correctly in the listing.
+      pathMap.set(folderPath, [...existingFiles, { ...file, name: file.name }]);
     });
-    
+
     return pathMap;
   };
 
@@ -69,7 +73,7 @@ const ResourceUploadModal = ({ opened, close, initialFiles = [] }: Props) => {
     parentId: string;
     depth: number;
   }
-  
+
   const processFolders = async (
     files: FileItem[],
     rootParentId: string,
@@ -77,7 +81,7 @@ const ResourceUploadModal = ({ opened, close, initialFiles = [] }: Props) => {
   ): Promise<FileItemWithParentId[]> => {
     const pathToFilesMap = groupFilesByPath(files);
     const folderPaths = Array.from(pathToFilesMap.keys());
-    
+
     // Track created folders by their name and depth to avoid duplicates
     const createdFolders = new Map<string, FolderMetadata>();
     const filesWithParentIds: FileItemWithParentId[] = [];
@@ -139,7 +143,7 @@ const ResourceUploadModal = ({ opened, close, initialFiles = [] }: Props) => {
           });
         } else {
           filesWithParentIds.push({
-            ...file 
+            ...file
           });
         }
       });
@@ -150,10 +154,10 @@ const ResourceUploadModal = ({ opened, close, initialFiles = [] }: Props) => {
 
   const onStartUpload = useCallback(
     async (tree: FileTreeItem[]) => {
-      setIsLoading(true); 
+      setIsLoading(true);
       let uploadQueueState: UploadQueueState[] = [];
       const files: FileItemWithParentId[] = [];
-      
+
       for (let i = 0; i < tree.length; i++) {
         const rootORFolder = tree[i] as FileTreeItem;
         if (rootORFolder.type === "root" && rootORFolder.children.length > 0) {
@@ -170,17 +174,17 @@ const ResourceUploadModal = ({ opened, close, initialFiles = [] }: Props) => {
               | "error",
           }));
           uploadQueueState = filesWithIsPaused;
-          
+
           if (folderId) {
             // eslint-disable-next-line no-unsafe-optional-chaining
-            files.push(...rootORFolder.children?.map((item) => ({ 
-              ...item, 
-              parentId: [folderId as string] 
+            files.push(...rootORFolder.children?.map((item) => ({
+              ...item,
+              parentId: [folderId as string]
             } as FileItemWithParentId)));
           } else {
             // eslint-disable-next-line no-unsafe-optional-chaining
-            files.push(...rootORFolder.children?.map((item) => ({ 
-              ...item 
+            files.push(...rootORFolder.children?.map((item) => ({
+              ...item
             } as FileItemWithParentId)));
           }
 
@@ -190,21 +194,21 @@ const ResourceUploadModal = ({ opened, close, initialFiles = [] }: Props) => {
             folderName: (rootORFolder as FolderItem).name,
             parent: folderId,
             folderSize: 0,
-          },{
+          }, {
             onError: (error) => {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              if((error as unknown as any)?.status == 409){
-                  
+              if ((error as unknown as any)?.status == 409) {
+
                 toast.error("Duplicate folder name found in this location ");
-                setIsLoading(false); 
+                setIsLoading(false);
               }
             }
           });
-          
+
           if (data?.uploadId) {
             console.log("folder created");
             const processedFoldersWithFiles = await processFolders(
-              rootORFolder.children, 
+              rootORFolder.children,
               data?.uploadId as string,
               (rootORFolder as FolderItem).name
             );
@@ -234,7 +238,7 @@ const ResourceUploadModal = ({ opened, close, initialFiles = [] }: Props) => {
         () => startUploading(files, runWhenAnyChunkFails),
         500,
       );
-     
+
       folderPathAgainstFiles.clear();
       setIsLoading(false);
       close(); // Close the upload modal, but Upload Manager stays visible

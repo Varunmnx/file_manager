@@ -1,7 +1,10 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { API, Slug } from "@/services";
 import { useParams } from "react-router-dom";
 import { useChunkedUpload } from "../../context/chunked-upload.context";
+import { useQueryClient } from "@tanstack/react-query";
+import { Config } from "@/config";
+import { StorageKeys, loadString } from "@/utils/storage";
 import { toast } from "sonner";
 import {
     IconUpload,
@@ -32,6 +35,7 @@ interface DirectUploadItem {
     fileSize: number;
     status: "pending" | "initiating" | "uploading" | "confirming" | "completed" | "error";
     progress: number;
+    /** The DB uploadId returned by the initiate endpoint. Used for cleanup on cancel. */
     uploadId?: string;
     presignedUrl?: string;
     error?: string;
@@ -102,6 +106,32 @@ const formatSpeed = (bytesPerSec: number): string => {
     return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
 };
 
+// ── Backend cleanup helper ───────────────────────
+// Sends a fire-and-forget DELETE to remove an orphaned upload record from the
+// DB (and its R2 object). Called on cancel AND on page unload via sendBeacon.
+
+function deleteUploadFromBackend(uploadId: string, token: string | null | undefined) {
+    if (!uploadId || !token) return;
+    const url = `${Config.API_URL}/upload/all`;
+    const body = JSON.stringify({ uploadIds: [uploadId] });
+
+    // Use fetch with keepalive so it survives a page unload; sendBeacon doesn't
+    // support setting Authorization headers so we always use fetch here.
+    fetch(url, {
+        method: "DELETE",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+        },
+        body,
+        keepalive: true, // keeps the request alive even after the page is unloaded
+    }).catch(() => { /* best-effort — ignore errors on cleanup */ });
+}
+
+function getAuthToken(): string | null | undefined {
+    return loadString(StorageKeys.TOKEN);
+}
+
 // ── Main Component ───────────────────────────────
 
 const DirectUploadController = () => {
@@ -112,6 +142,23 @@ const DirectUploadController = () => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { folderId } = useParams();
     const { refetchFilesAndFolders } = useChunkedUpload();
+    const queryClient = useQueryClient();
+
+    // Track all in-progress uploadIds so we can clean them up on page unload
+    const activeUploadIds = useRef<Set<string>>(new Set());
+
+    // ── Page unload: delete any incomplete uploads from backend ────────────────
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            const token = getAuthToken();
+            for (const uploadId of activeUploadIds.current) {
+                deleteUploadFromBackend(uploadId, token);
+            }
+        };
+
+        window.addEventListener("beforeunload", handleBeforeUnload);
+        return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+    }, []);
 
     // ── Upload a single file ───────────────────────
 
@@ -119,6 +166,8 @@ const DirectUploadController = () => {
         const updateItem = (id: string, patch: Partial<DirectUploadItem>) => {
             setUploads((prev) => prev.map((u) => (u.id === id ? { ...u, ...patch } : u)));
         };
+
+        let backendUploadId: string | undefined;
 
         try {
             // Step 1: Get presigned URL from backend
@@ -136,12 +185,17 @@ const DirectUploadController = () => {
 
             if (!res) throw new Error("Failed to get upload URL");
 
+            backendUploadId = res.uploadId;
+
             updateItem(item.id, {
                 status: "uploading",
                 uploadId: res.uploadId,
                 presignedUrl: res.presignedUrl,
                 startTime: Date.now(),
             });
+
+            // Register this uploadId as "active" so it gets cleaned up on page unload
+            activeUploadIds.current.add(res.uploadId);
 
             // Step 2: Upload directly to R2 via XHR (for progress tracking)
             await new Promise<void>((resolve, reject) => {
@@ -170,7 +224,6 @@ const DirectUploadController = () => {
 
                 xhr.onerror = () => {
                     abortControllers.current.delete(item.id);
-                    // Status 0 means CORS blocked or network error
                     const corsHint = xhr.status === 0 ? " (possible CORS block — check R2 bucket CORS policy)" : "";
                     console.error(`[DirectUpload] XHR network error${corsHint}`, { status: xhr.status });
                     reject(new Error(`Network error uploading to R2${corsHint}`));
@@ -193,23 +246,51 @@ const DirectUploadController = () => {
                 slug: `${Slug.DIRECT_UPLOAD_CONFIRM}/${res.uploadId}`,
             });
 
+            // ── Upload complete ──────────────────────────────────────────────────
+            // Remove from active set (no longer needs cleanup)
+            activeUploadIds.current.delete(res.uploadId);
+
             updateItem(item.id, { status: "completed", progress: 100 });
 
-            // Refresh file list
+            // Refresh file list AND storage indicator simultaneously
             refetchFilesAndFolders();
+            queryClient.invalidateQueries({ queryKey: ["storage-info"] });
 
         } catch (err: any) {
             if (err.message === "Upload cancelled") {
                 updateItem(item.id, { status: "error", error: "Cancelled" });
+                // Clean up the backend record for this cancelled upload
+                if (backendUploadId) {
+                    activeUploadIds.current.delete(backendUploadId);
+                    try {
+                        await API.delete({
+                            slug: Slug.GET_ALL_FILES,
+                            axiosConfig: { data: { uploadIds: [backendUploadId] } },
+                        });
+                    } catch (cleanupErr) {
+                        console.warn("[DirectUpload] Cleanup after cancel failed:", cleanupErr);
+                    }
+                }
             } else {
                 console.error("Direct upload error:", err);
+                // If we have a backendUploadId and the error is NOT a cancel, the
+                // DB record exists but the file was never uploaded to R2. Delete it.
+                if (backendUploadId) {
+                    activeUploadIds.current.delete(backendUploadId);
+                    try {
+                        await API.delete({
+                            slug: Slug.GET_ALL_FILES,
+                            axiosConfig: { data: { uploadIds: [backendUploadId] } },
+                        });
+                    } catch { /* best-effort */ }
+                }
                 updateItem(item.id, {
                     status: "error",
                     error: err?.response?.data?.message || err.message || "Upload failed",
                 });
             }
         }
-    }, [folderId, refetchFilesAndFolders]);
+    }, [folderId, refetchFilesAndFolders, queryClient]);
 
     // ── Add files to queue & start uploads ─────────
 
@@ -236,12 +317,26 @@ const DirectUploadController = () => {
 
     // ── Cancel upload ──────────────────────────────
 
-    const cancelUpload = useCallback((id: string) => {
-        const xhr = abortControllers.current.get(id);
+    const cancelUpload = useCallback((item: DirectUploadItem) => {
+        // Abort the in-flight XHR (triggers "Upload cancelled" error in uploadFile)
+        const xhr = abortControllers.current.get(item.id);
         if (xhr) {
             xhr.abort();
         }
-        setUploads((prev) => prev.filter((u) => u.id !== id));
+
+        // If the upload hasn't started yet (still "pending" / "initiating") or if
+        // the XHR was never created, we still need to clean up the DB record.
+        if (item.uploadId) {
+            activeUploadIds.current.delete(item.uploadId);
+            // If xhr.abort() was called, the catch in uploadFile will handle the
+            // delete. If there was no XHR yet, delete here directly.
+            if (!xhr) {
+                const token = getAuthToken();
+                deleteUploadFromBackend(item.uploadId, token);
+            }
+        }
+
+        setUploads((prev) => prev.filter((u) => u.id !== item.id));
     }, []);
 
     // ── Retry failed upload ────────────────────────
@@ -436,7 +531,7 @@ const DirectUploadController = () => {
                     <div className="p-4 pt-2 max-h-[350px] overflow-auto">
                         <div className="flex flex-col gap-2">
                             {uploads.map((item) => (
-                                <DirectUploadItem
+                                <DirectUploadItemComponent
                                     key={item.id}
                                     item={item}
                                     onCancel={cancelUpload}
@@ -455,7 +550,7 @@ const DirectUploadController = () => {
 
 interface DirectUploadItemProps {
     item: DirectUploadItem;
-    onCancel: (id: string) => void;
+    onCancel: (item: DirectUploadItem) => void;
     onRetry: (item: DirectUploadItem) => void;
 }
 
@@ -484,7 +579,7 @@ function DirectUploadItemComponent({ item, onCancel, onRetry }: DirectUploadItem
         uploading: { text: `${item.progress}%`, badge: "bg-orange-100 text-orange-700" },
         confirming: { text: "Confirming...", badge: "bg-yellow-100 text-yellow-700" },
         completed: { text: "Complete", badge: "bg-green-100 text-green-700" },
-        error: { text: "Failed", badge: "bg-red-100 text-red-700" },
+        error: { text: item.error === "Cancelled" ? "Cancelled" : "Failed", badge: "bg-red-100 text-red-700" },
     };
 
     const sl = statusLabel[item.status] || statusLabel.pending;
@@ -521,7 +616,7 @@ function DirectUploadItemComponent({ item, onCancel, onRetry }: DirectUploadItem
 
                     {isActive && (
                         <button
-                            onClick={() => onCancel(item.id)}
+                            onClick={() => onCancel(item)}
                             className="w-7 h-7 flex items-center justify-center rounded-lg bg-red-100 text-red-500 hover:bg-red-200 border-none cursor-pointer transition-all"
                             title="Cancel upload"
                         >
@@ -529,7 +624,7 @@ function DirectUploadItemComponent({ item, onCancel, onRetry }: DirectUploadItem
                         </button>
                     )}
 
-                    {item.status === "error" && (
+                    {item.status === "error" && item.error !== "Cancelled" && (
                         <button
                             onClick={() => onRetry(item)}
                             className="w-7 h-7 flex items-center justify-center rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200 border-none cursor-pointer transition-all"
@@ -557,7 +652,7 @@ function DirectUploadItemComponent({ item, onCancel, onRetry }: DirectUploadItem
             )}
 
             {/* Error message */}
-            {item.status === "error" && item.error && (
+            {item.status === "error" && item.error && item.error !== "Cancelled" && (
                 <div className="mt-2 text-xs text-red-600 bg-red-100 px-2 py-1 rounded-lg flex items-center gap-1">
                     <IconX size={12} />
                     {item.error}
@@ -566,8 +661,5 @@ function DirectUploadItemComponent({ item, onCancel, onRetry }: DirectUploadItem
         </div>
     );
 }
-
-// Give it a display name
-const DirectUploadItem = DirectUploadItemComponent;
 
 export default DirectUploadController;

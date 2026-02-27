@@ -18,6 +18,7 @@ import { UploadedFile } from "@/types/file.types";
 import useFileGetStatus from "../hooks/useFileGetStatus";
 import { useParams } from "react-router-dom";
 import usePauseUpload from "../hooks/usePauseUpload";
+import { useQueryClient } from "@tanstack/react-query";
 import useDeleteAll from "../hooks/useDeleteAll";
 import {
   persistUpload,
@@ -42,13 +43,13 @@ export interface UploadQueueState {
   lastActivity?: Date;
   fileHash?: string;
   status?:
-    | "idle"
-    | "initiating"
-    | "uploading"
-    | "completed"
-    | "paused"
-    | "cancelled"
-    | "error";
+  | "idle"
+  | "initiating"
+  | "uploading"
+  | "completed"
+  | "paused"
+  | "cancelled"
+  | "error";
 }
 
 export interface FileItemWithParentId extends FileItem {
@@ -58,7 +59,7 @@ export interface FileItemWithParentId extends FileItem {
 interface ChunkedUploadContextValue {
   startUploading: (
     files: FileItemWithParentId[],
-    runWhenAnyChunkFails?: (error: string) => void 
+    runWhenAnyChunkFails?: (error: string) => void
   ) => Promise<void>;
   cancelAllUploads: () => void;
   pauseUpload: (uploadQueueItem: UploadQueueState) => Promise<void>;
@@ -102,6 +103,7 @@ export function ChunkedUploadProvider({
   } = useGetFiles(folderId);
   const pauseUploadMutation = usePauseUpload();
   const deleteFileFolderMutation = useDeleteAll();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     refetchFilesAndFolders();
@@ -172,7 +174,7 @@ export function ChunkedUploadProvider({
     ) => {
       const uploadedChunkIndices = [...(currentFileUploadState?.uploadedChunks || [])];
       const chunks = splitFileIntoChunks(uploadQueueItem.file);
-      const file = uploadQueueItem.file; 
+      const file = uploadQueueItem.file;
 
       const uploadedSet = new Set(uploadedChunkIndices);
 
@@ -194,6 +196,7 @@ export function ChunkedUploadProvider({
           }),
         );
         refetchFilesAndFolders();
+        queryClient.invalidateQueries({ queryKey: ["storage-info"] });
         return;
       }
 
@@ -289,6 +292,7 @@ export function ChunkedUploadProvider({
 
           if (uploadedChunkIndices.length === chunks.length) {
             refetchFilesAndFolders();
+            queryClient.invalidateQueries({ queryKey: ["storage-info"] });
             break;
           }
 
@@ -296,13 +300,13 @@ export function ChunkedUploadProvider({
           // Check if this was a pause action (AbortController with "paused" reason)
           const abortReason = currentUploadAbortController.current?.signal?.reason;
           const isPausedAbort = abortReason === "paused";
-          
+
           // Check for both DOMException AbortError and Axios CanceledError
-          const isAbortError = 
+          const isAbortError =
             (error instanceof DOMException && error.name === "AbortError") ||
             (error instanceof Error && error.name === "CanceledError") ||
             (error instanceof Error && (error as any).code === "ERR_CANCELED");
-          
+
           if (isAbortError && isPausedAbort) {
             console.log(`Upload paused for chunk at index ${i}`);
             // Don't change status here - pauseUpload already handles this
@@ -347,9 +351,10 @@ export function ChunkedUploadProvider({
           }),
         );
         refetchFilesAndFolders();
+        queryClient.invalidateQueries({ queryKey: ["storage-info"] });
       }
     },
-    [splitFileIntoChunks, calculateOverallProgress, refetchFilesAndFolders],
+    [splitFileIntoChunks, calculateOverallProgress, refetchFilesAndFolders, queryClient],
   );
 
   const startUploading = useCallback(
@@ -421,7 +426,7 @@ export function ChunkedUploadProvider({
 
             let completedChunks = 0;
             console.log("chunks", chunks);
-            
+
             for (const chunk of chunks) {
               if (currentUploadAbortController.current.signal.aborted) {
                 break;
@@ -443,12 +448,12 @@ export function ChunkedUploadProvider({
                       "Content-Type": "multipart/form-data",
                     },
                     signal: currentUploadAbortController.current.signal,
-                    
+
                     onUploadProgress: (progressEvent) => {
                       const chunkProgress = progressEvent.total
                         ? Math.round(
-                            (progressEvent.loaded / progressEvent.total) * 100,
-                          )
+                          (progressEvent.loaded / progressEvent.total) * 100,
+                        )
                         : 0;
 
                       setUploadQueue((prev) =>
@@ -506,7 +511,7 @@ export function ChunkedUploadProvider({
                 // Update persistence with current chunk progress
                 const uploadedChunksList = Array.from({ length: completedChunks }, (_, i) => i);
                 const isComplete = completedChunks === totalChunks;
-                
+
                 if (isComplete && response?.uploadId) {
                   // Upload complete - remove from persistence
                   removePersistedUpload(response.uploadId);
@@ -526,10 +531,10 @@ export function ChunkedUploadProvider({
                         percentage: isComplete
                           ? 100
                           : calculateOverallProgress(
-                              completedChunks,
-                              totalChunks,
-                              0,
-                            ),
+                            completedChunks,
+                            totalChunks,
+                            0,
+                          ),
                         currentChunkProgress: 0,
                         uploadedChunks: [completedChunks],
                       };
@@ -541,13 +546,13 @@ export function ChunkedUploadProvider({
                 // Check if this was a pause action
                 const abortReason = currentUploadAbortController.current?.signal?.reason;
                 const isPausedAbort = abortReason === "paused";
-                
+
                 // Check for both DOMException AbortError and Axios CanceledError
-                const isAbortError = 
+                const isAbortError =
                   (chunkError instanceof DOMException && chunkError.name === "AbortError") ||
                   (chunkError instanceof Error && chunkError.name === "CanceledError") ||
                   (chunkError instanceof Error && (chunkError as any).code === "ERR_CANCELED");
-                
+
                 if (isAbortError) {
                   if (isPausedAbort) {
                     console.log(`Chunk upload paused for file: ${file.name}`);
@@ -593,13 +598,13 @@ export function ChunkedUploadProvider({
           // Check if this was a pause or cancel action
           const abortReason = currentUploadAbortController.current?.signal?.reason;
           const isPausedAbort = abortReason === "paused";
-          
+
           // Check for abort errors (DOMException or Axios CanceledError)
-          const isAbortError = 
+          const isAbortError =
             (error instanceof DOMException && error.name === "AbortError") ||
             (error instanceof Error && error.name === "CanceledError") ||
             (error instanceof Error && (error as any).code === "ERR_CANCELED");
-          
+
           if (isAbortError && isPausedAbort) {
             console.log(`Upload paused for file: ${file.name}`);
             // Don't set error state for paused uploads
@@ -629,6 +634,7 @@ export function ChunkedUploadProvider({
         } finally {
           currentUploadAbortController.current = null;
           refetchFilesAndFolders();
+          queryClient.invalidateQueries({ queryKey: ["storage-info"] });
         }
       }
 
@@ -639,6 +645,7 @@ export function ChunkedUploadProvider({
       refetchFilesAndFolders,
       splitFileIntoChunks,
       calculateOverallProgress,
+      queryClient,
     ],
   );
 
@@ -692,7 +699,7 @@ export function ChunkedUploadProvider({
     async (uploadQueueItem: UploadQueueState) => {
       // Store the current pause state BEFORE toggling
       const wasPaused = uploadQueueItem.isPaused;
-      
+
       // Toggle UI state immediately for responsive feedback
       setUploadQueue((prev) =>
         prev.map((upload) => {
@@ -719,11 +726,11 @@ export function ChunkedUploadProvider({
           const response = await getFileUploadState.mutateAsync(
             uploadQueueItem._id as string,
           );
-          
+
           if (response?.uploadedChunks) {
             pauseUploadMutation.mutate({
               uploadId: uploadQueueItem._id as string,
-              chunkIndex: response.uploadedChunks.length > 0 
+              chunkIndex: response.uploadedChunks.length > 0
                 ? response.uploadedChunks[response.uploadedChunks.length - 1] + 1
                 : 0,
             });
@@ -735,7 +742,7 @@ export function ChunkedUploadProvider({
           const response = await getFileUploadState.mutateAsync(
             uploadQueueItem._id as string,
           );
-          
+
           if (response) {
             resumeUpload(uploadQueueItem, response as UploadedFile);
           }

@@ -15,6 +15,6 @@ export function useStorageInfo() {
             });
             return res!;
         },
-        staleTime: 30_000,
+        staleTime: 5_000,
     });
 }
